@@ -1,97 +1,81 @@
 # ai-infra-lab
 
-AI Infra 方向的个人实验台。记录每一个 kernel、每一次测量、每一个想清楚的问题。
+一个 GPU 算子的学习与优化实验台。目标不是"把算子写出来"，而是**知道自己离硬件上限还有多远、差在哪**。
+
+---
+
+## 目前做了什么
+
+| 工作 | 状态 | 结果 |
+|---|---|---|
+| 逐行 softmax（朴素版） | ✅ | `8192×8192` 达 **85.5%** 显存带宽 |
+| 逐行 softmax（warp 版） | ✅ | `N=128` 从 **19% → 93%**，**4.96×** |
+| 正确性测试 | ✅ | 5 个用例，含非整齐 N / ±1000 极端值 / 退化行 |
+| GEMM 基准 | 🚧 | 代码已写，未实测 |
+
+### v2 的 4.96× 是怎么来的
+
+拆成两个正交的改动，分别测：
+
+| 改动 | 针对的瓶颈 | 收益 |
+|---|---|---|
+| 归约：shared 树形 → `__shfl_down_sync` | 屏障开销（9 次 → 0~2 次） | **1.63×** |
+| 结构：一行 256 线程 → 一行 32 线程（多行共享 block） | 短行时一半 warp 空转 + 在飞请求不足 | **3.04×** |
+
+`1.63 × 3.04 = 4.96`，和实测对得上。
+
+---
+
+## 三条结论（比代码值钱）
+
+**1. "读三遍"不等于三倍显存流量。**
+朴素版扫三遍，但一行只有 32KB，L2 全吸收了。真实流量就是读一遍写一遍——所以靠减少遍数省带宽的思路是错的。
+
+**2. 短行和长行是两个不同的问题。**
+长行撞带宽墙（85%，接近顶）；短行撞**延迟 + 协调**墙（19%，8 个 warp 有一半在屏障前空转）。同一个 kernel，两种病，药不一样。
+
+**3. 小工作集的 `%spec` 会系统性偏高。**
+写回被 L2 接住，直到下一次 flush 才落到显存——而 flush 不计时。所以小张量的带宽数字偏乐观，**只能同尺寸横比，不能跨尺寸纵比**。
+
+细节见 [`notes/`](notes/)。
+
+---
 
 ## 目录
 
 ```
-ai-infra-lab/
-├── ROADMAP.md        # 大二到秋招的整体路线
-├── gemm_bench.cu     # 第 1 课：naive vs tiled vs cuBLAS，带 roofline 参考
-└── notes/            # 每轮实验的结论（最重要的部分）
+softmax/
+  softmax_v1.cu        朴素版：block 一行、shared 归约、带 L2 冲刷的计时框架
+  softmax_v2.cu        优化版：多行/warp 归约，W=1/2/4/8 可切
+  softmax_self.cu      自己重写的 v1
+  softmax_v2_self.cu   自己重写的 v2（一个 warp 一行，零屏障）
+  softmax_test.cu      正确性测试（5 个用例）
+  hello_cuda.cu        环境自检
+gemm_bench.cu          GEMM 基准（朴素 / tiled / cuBLAS 对照）
+notes/                 实验记录
 ```
 
-## 先确认环境
-
-```bash
-nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv
-nvcc --version
-```
-
-`compute_cap` 那一列就是下面编译命令里 `-arch=sm_XX` 要填的数字。
-
-> **本机是 RTX 5070 → `compute_cap = 12.0` → `-arch=sm_120`**
->
-> 配套要求，缺一个就会卡住：
-> - **CUDA Toolkit ≥ 12.8**（12.7 及更早不认识 `sm_120`，会直接报 unsupported architecture）
-> - **驱动 ≥ 570**（`nvidia-smi` 右上角看）
-> - 后面装 PyTorch 时要选 **cu128 及以上**的 wheel，`cu121` 的轮子在 50 系上跑不起来
-> - Ninetoothed 依赖 Triton，Triton 3.x 之后才正式支持 Blackwell；版本太老会编译失败
-
-## 编译
-
-**Windows**（要用 "x64 Native Tools Command Prompt for VS"，普通 cmd 找不到 `cl.exe`）：
-
-```bat
-nvcc -O3 -arch=sm_120 gemm_bench.cu -o gemm_bench.exe -lcublas
-```
-
-**WSL / Linux**：
-
-```bash
-nvcc -O3 -arch=sm_120 gemm_bench.cu -o gemm_bench -lcublas
-```
-
-**WSL 下如果 nvcc 报找不到 GPU**：确认装了 `nvidia-cuda-toolkit`，并且 WSL 版本 ≥ 2（`wsl --version`）。
+---
 
 ## 运行
 
-```
-gemm_bench
-```
+需要 CUDA Toolkit ≥ 12.8（RTX 50 系需要 `sm_120`）。
 
-输出示例（RTX 5070：48 SM，12GB GDDR7，理论 FP32 峰值 ≈ 31 TFLOP/s，带宽 ≈ 672 GB/s）：
+```bash
+cd softmax
 
-```
-GPU      : NVIDIA GeForce RTX 5070
-SM count : 48
-Compute  : 12.0
-Est. FP32 peak : 30.8 TFLOP/s
-Est. HBM  BW   : 672.0 GB/s
-     N   naive ms  naive GF/s   tiled GF/s  cublas GF/s    %cuBLAS   maxerr
-   256       3.21         10.5        380.2       1420.6       26.8   2.1e-05
-  1024      62.40         34.4       3100.5      13800.0       22.5   4.7e-05
-  4096          -            -      16500.0      24800.0       66.5   1.1e-04
+nvcc -O3 -arch=sm_120 softmax_test.cu  -o softmax_test  && ./softmax_test
+nvcc -O3 -arch=sm_120 softmax_v1.cu    -o softmax_v1    && ./softmax_v1
+nvcc -O3 -arch=sm_120 softmax_v2.cu    -o softmax_v2    && ./softmax_v2 1
 ```
 
-> 上面是我按 5070 的规格**估算**的量级，不是实测。你的真实数字一定不同——**以你自己跑出来的为准**。
->
-> 两个值得留意的点：
-> - `N=256` 时即使 tiled 也只到峰值的 ~1%，因为小矩阵的运算强度 (`N/6 ≈ 43 FLOP/byte`) 刚好低于这张卡的机器平衡点 (`31 TFLOPS / 672 GB/s ≈ 46 FLOP/byte`)，这时候是**带宽受限**，再优化 tiling 也没用
-> - `cublas` 那一列是 `CUBLAS_PEDANTIC_MATH`（纯 FP32）。如果你把代码里那行改成 `CUBLAS_DEFAULT_MATH`，数字会跳一大截——那才是 TF32 Tensor Core 的真实速度
+硬件：RTX 5070（48 SM / 12 GB GDDR7 / 峰值带宽 ≈ 672 GB/s）
 
+---
 
-## 三个必做的小实验（做完再往下走）
+## 待办
 
-改代码、重跑、对比，把结论写进 `notes/`。
-
-1. **拆掉 padding**
-   把 `As[TILE][TILE + 1]` 改成 `As[TILE][TILE]`，重跑。
-   预期：明显变慢。想清楚为什么——32 个线程同时访问同一列 = 同一个 bank。
-   *产出：一句话解释 bank 冲突 + 一组前后对比数字。*
-
-2. **换 TILE 大小**
-   试 `TILE = 16 / 32 / 64`。64 的时候注意 `blockDim = 64×64 = 4096` 超了 1024 线程上限，需要改成每线程算 2×2 个元素。
-   *产出：tile 大小与性能的关系曲线，说明拐点来自哪里（shared memory 容量？occupancy？）*
-
-3. **算复用率**
-   手算：naive 版处理一个 1024³ 的 GEMM，总共从 global memory 读了多少字节？tiled 版呢？
-   用 `mem_bw` 算一下 naive 版理论上最少要多少时间，和实测差多少。
-   *产出：这就是你第一次真正用上 roofline 的地方。*
-
-## 下一步
-
-- [ ] `notes/gemm.md`：把上面三个实验的结论写下来
-- [ ] 加一版 register blocking（每线程算 4×4 个元素）
-- [ ] 加一版 tensor core（`mma.sync`，FP32→TF32 或 FP16）
-- [ ] profile：`ncu --set full ./gemm_bench`，看懂 `sm__throughput` 和 `dram__throughput`
+- [ ] `float4` 向量化：长行能不能从 85.5% 再往上走
+- [ ] 拿到真实 DRAM 流量，修正 `%spec` 口径（WSL 下 profiler 受限）
+- [ ] 把 v2 的两层归约拆成独立可测的中间版本
+- [ ] GEMM 三版跑通并出对比
