@@ -15,6 +15,7 @@ softmax_test
 softmax_v1
 softmax_v2
 softmax_v2_self
+bench_v2self
 
 # ---- profiler 报告 ----
 *.nsys-rep
