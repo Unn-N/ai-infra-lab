@@ -80,9 +80,9 @@ nvcc -O3 -arch=sm_120 softmax/softmax_v2_self_bench.cu -o build/bench_v2self && 
 
 1. 关 **Wallpaper Engine** 等动态壁纸
 2. 关任何 GPU 加速程序（安卓模拟器、MAA、浏览器视频）
-3. **连测两次**，两次差 > 3% 说明环境不干净，重来
+3. **每个配置跑 3 次，取中位数**（单次数字不可用，哪怕环境干净）
 
-按这个做完，同一配置两轮的差异从 **15–19 个点降到 1–2 个点**，才能分辨 5% 级别的改进。详见 [`notes/04-measurement-protocol.md`](notes/04-measurement-protocol.md)。
+按这个做完，噪声从 **15–19 个点降到 1–2 个点**的中位数波动，才能分辨 5% 级别的改进。另外 `%spec` 超过 100% 说明口径失效（L2 吸收了写回），那个尺寸不能用这个指标。详见 [`notes/04-measurement-protocol.md`](notes/04-measurement-protocol.md)。
 
 ---
 

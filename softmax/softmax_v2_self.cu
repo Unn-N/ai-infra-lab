@@ -42,6 +42,9 @@ __device__ __forceinline__ float reduce_sum(float v) {
 //   W=8 → 八个 warp 合干一行（长行最优）
 //
 // 归约分两层：warp 内用 shfl（无屏障），跨 warp 才用 shared + 2 次屏障。
+//
+// 向量化：每个 lane 一次读 16 字节（float4），指令数降到 1/4。
+// 前提：N % 4 == 0，否则每行起点不满足 16 字节对齐。
 // ------------------------------------------------------------------
 __global__ void softmax_rows(float* __restrict__ x, float* __restrict__ y, int M, int N, int W) {
     // 1. 我是第几个 warp、warp 里第几个 lane
@@ -59,6 +62,8 @@ __global__ void softmax_rows(float* __restrict__ x, float* __restrict__ y, int M
     // 3. 这一行的起点
     const float* xr = x + (long long)row * N;
     float* yr       = y + (long long)row * N;
+    const float4* xr4 = reinterpret_cast<const float4*>(xr);
+    float4*       yr4 = reinterpret_cast<float4*>(yr);
 
     // 4. 一行由 W 个 warp 分，所以跨越 W*32 个线程
     const int stride = W * 32;
@@ -66,10 +71,14 @@ __global__ void softmax_rows(float* __restrict__ x, float* __restrict__ y, int M
 
     __shared__ float partial[WARPS_PER_BLOCK];  // 每个 warp 一格，跨 warp 汇总用
 
+    const int n4 = N / 4;  // 一行有多少个 float4
+
     // ---------------- 第 1 遍：最大值 ----------------
     float m = -FLT_MAX;
-    for (int i = start; i < N; i += stride) {
-        m = fmaxf(m, xr[i]);
+    for (int i = start; i < n4; i += stride) {
+        float4 v = xr4[i];
+        // 两层树，不是四个串行的 fmaxf
+        m = fmaxf(m, fmaxf(fmaxf(v.x, v.y), fmaxf(v.z, v.w)));
     }
     m = reduce_max(m);  // warp 内合并
 
@@ -88,8 +97,13 @@ __global__ void softmax_rows(float* __restrict__ x, float* __restrict__ y, int M
 
     // ---------------- 第 2 遍：指数和 ----------------
     float s = 0.0f;
-    for (int i = start; i < N; i += stride) {
-        s += expf(xr[i] - m);
+    for (int i = start; i < n4; i += stride) {
+        float4 v = xr4[i];
+        float e0 = expf(v.x - m);
+        float e1 = expf(v.y - m);
+        float e2 = expf(v.z - m);
+        float e3 = expf(v.w - m);
+        s += (e0 + e1) + (e2 + e3);   // 同样是树形，避免串行累加链
     }
     s = reduce_sum(s);
 
@@ -108,8 +122,14 @@ __global__ void softmax_rows(float* __restrict__ x, float* __restrict__ y, int M
 
     // ---------------- 第 3 遍：写回 ----------------
     const float inv = 1.0f / s;
-    for (int i = start; i < N; i += stride) {
-        yr[i] = expf(xr[i] - m) * inv;
+    for (int i = start; i < n4; i += stride) {
+        float4 v = xr4[i];
+        float4 o;
+        o.x = expf(v.x - m) * inv;
+        o.y = expf(v.y - m) * inv;
+        o.z = expf(v.z - m) * inv;
+        o.w = expf(v.w - m) * inv;
+        yr4[i] = o;
     }
 }
 
