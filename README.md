@@ -71,6 +71,16 @@ nvcc -O3 -arch=sm_120 softmax_v2.cu    -o softmax_v2    && ./softmax_v2 1
 
 硬件：RTX 5070（48 SM / 12 GB GDDR7 / 峰值带宽 ≈ 672 GB/s）
 
+### ⚠️ 测性能前先做这些
+
+**测量噪声可能比你要测的优化还大。** 这台机器同时还在渲染 Windows 桌面，桌面一刷新就抢显存带宽。
+
+1. 关 **Wallpaper Engine** 等动态壁纸
+2. 关任何 GPU 加速程序（安卓模拟器、MAA、浏览器视频）
+3. **连测两次**，两次差 > 3% 说明环境不干净，重来
+
+按这个做完，同一配置两轮的差异从 **15–19 个点降到 1–2 个点**，才能分辨 5% 级别的改进。详见 [`notes/04-measurement-protocol.md`](notes/04-measurement-protocol.md)。
+
 ---
 
 ## 待办
