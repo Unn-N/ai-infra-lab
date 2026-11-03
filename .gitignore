@@ -1,9 +1,9 @@
 # ---- 编译产物 ----
+build/
 *.o
 *.obj
 *.exe
 *.out
-build/
 
 # ---- 本项目生成的可执行文件（没有扩展名，只好点名）----
 hello_cuda
@@ -15,7 +15,6 @@ softmax_test
 softmax_v1
 softmax_v2
 softmax_v2_self
-bench_v2self
 
 # ---- profiler 报告 ----
 *.nsys-rep

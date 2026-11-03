@@ -62,12 +62,15 @@ notes/                 实验记录
 需要 CUDA Toolkit ≥ 12.8（RTX 50 系需要 `sm_120`）。
 
 ```bash
-cd softmax
+mkdir -p build
 
-nvcc -O3 -arch=sm_120 softmax_test.cu  -o softmax_test  && ./softmax_test
-nvcc -O3 -arch=sm_120 softmax_v1.cu    -o softmax_v1    && ./softmax_v1
-nvcc -O3 -arch=sm_120 softmax_v2.cu    -o softmax_v2    && ./softmax_v2 1
+nvcc -O3 -arch=sm_120 softmax/softmax_test.cu        -o build/softmax_test    && ./build/softmax_test
+nvcc -O3 -arch=sm_120 softmax/softmax_v1.cu          -o build/softmax_v1      && ./build/softmax_v1
+nvcc -O3 -arch=sm_120 softmax/softmax_v2.cu          -o build/softmax_v2      && ./build/softmax_v2 1
+nvcc -O3 -arch=sm_120 softmax/softmax_v2_self_bench.cu -o build/bench_v2self && ./build/bench_v2self
 ```
+
+**编译产物统一输出到 `build/`**，源码目录保持干净。`build/` 已在 `.gitignore` 里，不用每次想“这个要不要提交”。
 
 硬件：RTX 5070（48 SM / 12 GB GDDR7 / 峰值带宽 ≈ 672 GB/s）
 
