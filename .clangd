@@ -1,0 +1,7 @@
+CompileFlags:
+  # 告诉 clangd：这些 .cu 文件按 CUDA 解析
+  Add:
+    - -xcuda
+    - --cuda-gpu-arch=sm_120
+    - --cuda-path=/usr/local/cuda
+    - -std=c++17

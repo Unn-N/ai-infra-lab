@@ -1,0 +1,43 @@
+# CUDA / C++ 代码风格
+# 用法：放在项目根目录，clangd 和 clang-format 插件都会自动读它。
+# 改完立刻生效，不需要重启编辑器。
+
+BasedOnStyle: LLVM
+Language: Cpp
+
+# ---- 缩进 ----
+IndentWidth: 4          # 一个缩进 4 个空格
+TabWidth: 4
+UseTab: Never           # 只用空格，不用制表符
+
+# ---- 行宽 ----
+ColumnLimit: 100        # 超过 100 列自动折行；CUDA 的类型名长，100 比 80 舒服
+
+# ---- 大括号 ----
+BreakBeforeBraces: Attach    # 左括号跟在语句同一行： if (x) {
+
+# ---- 空行与短函数 ----
+AllowShortFunctionsOnASingleLine: Empty   # 只有空函数体才允许写成一行
+AllowShortIfStatementsOnASingleLine: WithoutElse  # if (row >= M) row = M - 1;  保持一行
+AllowShortLoopsOnASingleLine: false
+
+# ---- switch ----
+IndentCaseLabels: false   # case 跟 switch 对齐，不要往里缩一层
+
+# ---- 对齐 ----
+AlignConsecutiveAssignments: true     # 连续的赋值 = 号对齐
+AlignConsecutiveDeclarations: false
+AlignTrailingComments: true
+
+# ---- 指针与运算符 ----
+PointerAlignment: Left   # float* p，不是 float *p
+SpaceBeforeParens: ControlStatements  # if (  ) 有空格，func(  ) 没有
+
+# ---- include ----
+SortIncludes: false      # 不要让 clang-format 重排 include
+                         # （CUDA 的头文件顺序有时候很敏感，别让它动）
+
+# ---- CUDA 相关 ----
+# clang-format 认识 __global__ / __device__ / <<< >>>，但内核启动的
+# 参数如果特别长仍可能被拆开。遇到别扭的地方加 // clang-format off
+# 和 // clang-format on 把那段包起来就行。
