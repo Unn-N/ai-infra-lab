@@ -51,7 +51,7 @@ softmax/
   softmax_v2_self.cu   自己重写的 v2（一个 warp 一行，零屏障）
   softmax_test.cu      正确性测试（5 个用例）
   hello_cuda.cu        环境自检
-gemm_bench.cu          GEMM 基准（朴素 / tiled / cuBLAS 对照）
+gemm/gemm_bench.cu          GEMM 基准（朴素 / tiled / cuBLAS 对照）
 notes/                 实验记录
 ```
 

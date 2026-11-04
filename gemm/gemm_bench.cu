@@ -161,14 +161,12 @@ int main() {
     cudaDeviceProp prop{};
     CUDA_CHECK(cudaGetDeviceProperties(&prop, dev));
 
-    const double clock_ghz =
-        static_cast<double>(prop.clockRate) / 1e6;  // kHz -> GHz
-    // 粗估：每 SM 每周期 128 个 FP32 lane，FMA = 2 FLOP
-    const double peak_fp32_tflops =
-        static_cast<double>(prop.multiProcessorCount) * 128.0 * 2.0 * clock_ghz / 1000.0;
-    // 显存带宽：DDR 每周期 2 次传输
-    const double mem_bw_gbps =
-        static_cast<double>(prop.memoryClockRate) * 2.0 * (prop.memoryBusWidth / 8.0) / 1e6;
+    // CUDA 13 已移除 cudaDeviceProp::clockRate / memoryClockRate / memoryBusWidth。
+    // 下面用 RTX 5070 的厂商规格，换卡时改这两行。
+    //   48 SM x 128 FP32 lane x 2(FMA) x 2.5 GHz  ~= 30.7 TFLOP/s
+    //   192-bit GDDR7 @ 28 Gbps                    ~= 672 GB/s
+    const double peak_fp32_tflops = 30.7;
+    const double mem_bw_gbps = 672.0;
 
     cublasHandle_t handle;
     CUBLAS_CHECK(cublasCreate(&handle));
@@ -205,8 +203,17 @@ int main() {
         CUDA_CHECK(cudaMalloc(&dC, (size_t)M * N * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&dCref, (size_t)M * N * sizeof(float)));
 
-        fill_random(dA, (size_t)M * K);
-        fill_random(dB, (size_t)K * N);
+        // 主机侧造数据，再整体拷进显存（不能往 device 指针里直接写）
+        {
+            float* hA = (float*)malloc((size_t)M * K * sizeof(float));
+            float* hB = (float*)malloc((size_t)K * N * sizeof(float));
+            fill_random(hA, (size_t)M * K);
+            fill_random(hB, (size_t)K * N);
+            CUDA_CHECK(cudaMemcpy(dA, hA, (size_t)M * K * sizeof(float), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMemcpy(dB, hB, (size_t)K * N * sizeof(float), cudaMemcpyHostToDevice));
+            free(hA);
+            free(hB);
+        }
 
         const double flops = 2.0 * M * N * K;
 
