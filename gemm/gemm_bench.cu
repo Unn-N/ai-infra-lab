@@ -148,7 +148,10 @@ static void fill_random(float* p, size_t n) {
 static double max_abs_diff(const float* a, const float* b, size_t n) {
     double m = 0.0;
     for (size_t i = 0; i < n; ++i) {
-        double d = std::fabs(static_cast<double>(a[i]) - static_cast<double>(b[i]));
+        double x = a[i], y = b[i];
+        // NaN/Inf 会让下面的比较永远为假，误差被“吃掉”。先单独抓出来。
+        if (!std::isfinite(x) || !std::isfinite(y)) return 1e30;
+        double d = std::fabs(x - y);
         if (d > m) m = d;
     }
     return m;
@@ -231,7 +234,8 @@ int main() {
         auto launch_tiled = [&]() { gemm_tiled<<<grid, block>>>(dA, dB, dC, M, N, K); };
 
         // ---- naive（大尺寸太慢，跳过）----
-        bool run_naive = (M <= 1024);
+        // naive 在 4096 上约 90ms，跑得动，不用跳过
+        const bool run_naive = true;
         auto launch_naive = [&]() { gemm_naive<<<grid, block>>>(dA, dB, dC, M, N, K); };
 
         const int iters = (M <= 512) ? 50 : (M <= 1024 ? 20 : 10);
@@ -256,6 +260,13 @@ int main() {
             CUDA_CHECK(cudaMemcpy(hR, dCref, (size_t)M * N * sizeof(float),
                                   cudaMemcpyDeviceToHost));
             err = max_abs_diff(hC, hR, (size_t)M * N);
+            if (N >= 2048) {
+                size_t bad = 0;
+                for (size_t i = 0; i < (size_t)M * N; ++i)
+                    if (hC[i] != hR[i]) ++bad;
+                printf("  [debug N=%d] hC[0]=%g hR[0]=%g 不同的元素=%zu / %zu\n", N, hC[0], hR[0],
+                       bad, (size_t)M * N);
+            }
             free(hC);
             free(hR);
         }

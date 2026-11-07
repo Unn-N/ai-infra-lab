@@ -1,5 +1,9 @@
 # ai-infra-lab
 
+> 2026-11-06 接手核对：以 WSL Ubuntu 的 `/home/unn/ai-infra-lab` 为当前仓库。目录、Git 基线和验证范围见 [HANDOFF.md](HANDOFF.md)。当前学习记录见 [一个 block 怎样算出一块 C](notes/06-gemm-tiling.md)。
+>
+> 下方 Softmax 性能数字来自历史实验，本次没有复测性能；缓存、带宽和瓶颈解释尚未全面复核。`ROADMAP.md` 是早期助手建议，并非用户确认的计划。
+
 一个 GPU 算子的学习与优化实验台。目标不是"把算子写出来"，而是**知道自己离硬件上限还有多远、差在哪**。
 
 ---
@@ -10,8 +14,9 @@
 |---|---|---|
 | 逐行 softmax（朴素版） | ✅ | `8192×8192` 达 **85.5%** 显存带宽 |
 | 逐行 softmax（warp 版） | ✅ | `N=128` 从 **19% → 93%**，**4.96×** |
-| 正确性测试 | ✅ | 5 个用例，含非整齐 N / ±1000 极端值 / 退化行 |
-| GEMM 基准 | 🚧 | 代码已写，未实测 |
+| naive Softmax 正确性测试 | ✅ | 2026-11-06 从源码重编译，5/5 PASS；不覆盖全部独立优化版本 |
+| GEMM 基准 | 🚧 | 历史上已运行 naive / tiled / cuBLAS；性能瓶颈待验证 |
+| 自写 tiled GEMM | 🚧 | 2026-11-07 已走完基础 kernel，保存首次草稿；编译与索引问题待处理，尚无正确性验证 |
 
 ### v2 的 4.96× 是怎么来的
 
@@ -26,18 +31,13 @@
 
 ---
 
-## 三条结论（比代码值钱）
+## 历史实验的三个观察
 
-**1. "读三遍"不等于三倍显存流量。**
-朴素版扫三遍，但一行只有 32KB，L2 全吸收了。真实流量就是读一遍写一遍——所以靠减少遍数省带宽的思路是错的。
+1. **源码重复读取，不等于真实 DRAM 流量按次数增加。** 缓存可能吸收重复访问；历史实验中减少遍数没有带来原先预期的加速。具体 DRAM 流量尚未由 profiler 核实。
+2. **短行和长行可能需要不同的线程安排。** 历史对比中，短行受益于 warp 归约和多行共享 block；不将这些观测泛化为所有尺寸的固定瓶颈。
+3. **`%spec` 是估算指标。** 它根据假设字节数和标称带宽计算，不能直接视为实测 DRAM 利用率。小工作集、缓存状态与测量噪声都可能影响解释。
 
-**2. 短行和长行是两个不同的问题。**
-长行撞带宽墙（85%，接近顶）；短行撞**延迟 + 协调**墙（19%，8 个 warp 有一半在屏障前空转）。同一个 kernel，两种病，药不一样。
-
-**3. 小工作集的 `%spec` 会系统性偏高。**
-写回被 L2 接住，直到下一次 flush 才落到显存——而 flush 不计时。所以小张量的带宽数字偏乐观，**只能同尺寸横比，不能跨尺寸纵比**。
-
-细节见 [`notes/`](notes/)。
+原始过程和数据保留在 [`notes/`](notes/)；其中待复核的技术说法列于 [接手记录](HANDOFF.md)。
 
 ---
 
@@ -48,10 +48,12 @@ softmax/
   softmax_v1.cu        朴素版：block 一行、shared 归约、带 L2 冲刷的计时框架
   softmax_v2.cu        优化版：多行/warp 归约，W=1/2/4/8 可切
   softmax_self.cu      自己重写的 v1
-  softmax_v2_self.cu   自己重写的 v2（一个 warp 一行，零屏障）
+  softmax_v2_self.cu   自己重写后完善的 v2（W dispatcher + float4）
   softmax_test.cu      正确性测试（5 个用例）
   hello_cuda.cu        环境自检
-gemm/gemm_bench.cu          GEMM 基准（朴素 / tiled / cuBLAS 对照）
+gemm/
+  gemm_bench.cu        GEMM 基准（朴素 / tiled / cuBLAS 对照）
+  gemm_self.cu         自写 tiled kernel 学习草稿（尚未通过编译/正确性验证）
 notes/                 实验记录
 ```
 
@@ -68,7 +70,10 @@ nvcc -O3 -arch=sm_120 softmax/softmax_test.cu        -o build/softmax_test    &&
 nvcc -O3 -arch=sm_120 softmax/softmax_v1.cu          -o build/softmax_v1      && ./build/softmax_v1
 nvcc -O3 -arch=sm_120 softmax/softmax_v2.cu          -o build/softmax_v2      && ./build/softmax_v2 1
 nvcc -O3 -arch=sm_120 softmax/softmax_v2_self_bench.cu -o build/bench_v2self && ./build/bench_v2self
+nvcc -O3 -arch=sm_120 gemm/gemm_bench.cu -o build/gemm_bench -lcublas && ./build/gemm_bench
 ```
+
+非交互环境中若找不到 `nvcc`，使用 `/usr/local/cuda/bin/nvcc`。
 
 **编译产物统一输出到 `build/`**，源码目录保持干净。`build/` 已在 `.gitignore` 里，不用每次想“这个要不要提交”。
 
@@ -82,13 +87,15 @@ nvcc -O3 -arch=sm_120 softmax/softmax_v2_self_bench.cu -o build/bench_v2self && 
 2. 关任何 GPU 加速程序（安卓模拟器、MAA、浏览器视频）
 3. **每个配置跑 3 次，取中位数**（单次数字不可用，哪怕环境干净）
 
-按这个做完，噪声从 **15–19 个点降到 1–2 个点**的中位数波动，才能分辨 5% 级别的改进。另外 `%spec` 超过 100% 说明口径失效（L2 吸收了写回），那个尺寸不能用这个指标。详见 [`notes/04-measurement-protocol.md`](notes/04-measurement-protocol.md)。
+历史测量中出现过明显波动和离群值，因此比较时需保留多次运行数据与中位数；不保证执行这些步骤后噪声一定降到某个固定范围。`%spec` 超过 100% 时应检查字节数假设、缓存和计时口径，不能解释为真实 DRAM 带宽突破上限。详见 [`notes/04-measurement-protocol.md`](notes/04-measurement-protocol.md)。
 
 ---
 
 ## 待办
 
-- [ ] `float4` 向量化：长行能不能从 85.5% 再往上走
+- [x] 已实现 `float4` 实验，历史数据见 `notes/05-float4.md`；不将它视为普遍加速结论
 - [ ] 拿到真实 DRAM 流量，修正 `%spec` 口径（WSL 下 profiler 受限）
 - [ ] 把 v2 的两层归约拆成独立可测的中间版本
-- [ ] GEMM 三版跑通并出对比
+- [x] GEMM naive / shared tiled / cuBLAS 已有历史运行输出
+- [x] 走完基础 tiled GEMM 的 kernel 流程并保存首次自写草稿
+- [ ] 核对自写版本的索引与编译问题，补 host 入口并验证正确性；见 [学习记录](notes/06-gemm-tiling.md#2026-11-07--读完基础-kernel保存第一次自写草稿)
