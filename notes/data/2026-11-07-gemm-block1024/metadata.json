@@ -1,0 +1,23 @@
+{
+  "base256": {
+    "output_tile": 64,
+    "thread_tile": 4,
+    "K_tile": 32,
+    "block_threads": 256,
+    "source_sha256": "e0746da45b8a956068ca57632600a1b1c7ac4a3499ee2e2dc0b35218d20f5788"
+  },
+  "thread1024_2": {
+    "output_tile": 64,
+    "thread_tile": 2,
+    "K_tile": 32,
+    "block_threads": 1024,
+    "source_sha256": "23280d8da8d935ea05134f34b4d54e6da55c5fd9de291af2980d620380061e85"
+  },
+  "thread1024_4": {
+    "output_tile": 128,
+    "thread_tile": 4,
+    "K_tile": 32,
+    "block_threads": 1024,
+    "source_sha256": "15c80eabc14b559af63f98c3a448af6e18504977a9f8dc6d1a140cdeb3487db7"
+  }
+}

@@ -1,5 +1,7 @@
 # ai-infra-lab
 
+> **2026-11-07 收尾：** 双缓冲、驻留、1024线程与padding实验已整理；当前版本、验证边界及续学入口见 [当日收尾](notes/22-gemm-day-end.md)。
+
 > **2026-11-07 里程碑：** 已完成基础 GEMM、寄存器分块实现和多组性能对照。当前成果、验证范围与复现命令见 [里程碑记录](notes/12-gemm-milestone.md)。
 >
 > 2026-11-06 接手核对：以 WSL Ubuntu 的 `/home/unn/ai-infra-lab` 为当前仓库。目录、Git 基线和验证范围见 [HANDOFF.md](HANDOFF.md)。当前学习记录见 [一个 block 怎样算出一块 C](notes/06-gemm-tiling.md)。
@@ -57,6 +59,7 @@ gemm/
   gemm_bench.cu        GEMM 基准（朴素 / tiled / cuBLAS 对照）
   gemm_self.cu         原自写 tiled 基线、host 调用与手算小例子
   gemm_self_re.cu      当前工作副本：64×64 输出块、16×16 线程、每线程 4×4 输出
+  gemm_self_double_buffer.cu  独立双缓冲实验：当前32×32输出、每线程2×2，历史64版本有快照
   gemm_self_check.cu   当前 re 版本的七组 CPU 全输出正确性检查
   gemm_self_bench.cu   Codex 编写的独立测量入口，引用 gemm_self_re.cu
 notes/                 实验记录
@@ -92,6 +95,16 @@ nvcc -O3 -arch=sm_120 gemm/gemm_self_bench.cu -o build/gemm_self_bench && ./buil
 | [10 · 每线程 2×2](notes/10-gemm-register-2x2.md) | 固定 32×32 输出块，调整线程分工 |
 | [11 · 每线程 4×4](notes/11-gemm-register-4x4.md) | 扩大输出块的收益与退步 |
 | [12 · 里程碑](notes/12-gemm-milestone.md) | 当前状态、验证范围和下一步候选 |
+| [13 · 复用与并行度](notes/13-reuse-and-parallelism.md) | 输出分块的结构性取舍与按输入选择配置的思考 |
+| [14 · 带宽推算与测量](notes/14-gemm-bandwidth-analysis.md) | 逻辑读取需求、真实 DRAM 流量的区别及计数器权限状态 |
+| [15 · 首次计数器采集](notes/15-gemm-first-profile.md) | 当前 2048³ 的真实 DRAM 流量、缓存与等待指标 |
+| [16 · 首次双缓冲](notes/16-gemm-double-buffer.md) | 异步预取实验、资源代价及不同形状的性能变化 |
+| [17 · 双缓冲带宽对照](notes/17-gemm-double-buffer-profile.md) | 同期 DRAM 字节带宽与 SM 指令发射指标，含异常采集记录 |
+| [18 · 双缓冲缩回 32/2](notes/18-gemm-double-buffer32.md) | 四版本同期对照，降低资源占用后的性能回退 |
+| [19 · 驻留与执行管线](notes/19-gemm-residency-and-pipelines.md) | 寄存器驻留约束、FMA/发射指标与 shared 冲突观测 |
+| [20 · 1024线程实验](notes/20-gemm-block1024.md) | 每线程2×2/4×4、输出64/128的单缓冲同期对照 |
+| [21 · As padding](notes/21-gemm-padding-as.md) | +1减少读取冲突，但对齐变化使加载指令增多、性能回退 |
+| [22 · 当日收尾](notes/22-gemm-day-end.md) | 当前版本、实验索引、验证边界与续学入口 |
 
 **编译产物统一输出到 `build/`**，源码目录保持干净。`build/` 已在 `.gitignore` 里，不用每次想“这个要不要提交”。
 
@@ -112,7 +125,7 @@ nvcc -O3 -arch=sm_120 gemm/gemm_self_bench.cu -o build/gemm_self_bench && ./buil
 ## 待办
 
 - [x] 已实现 `float4` 实验，历史数据见 `notes/05-float4.md`；不将它视为普遍加速结论
-- [ ] 拿到真实 DRAM 流量，修正 `%spec` 口径（WSL 下 profiler 受限）
+- [ ] Softmax：拿到真实 DRAM 流量，修正 `%spec` 口径（计数器权限已开启；GEMM 首次采集见 notes/15，Softmax 尚未重测）
 - [ ] 把 v2 的两层归约拆成独立可测的中间版本
 - [x] GEMM naive / shared tiled / cuBLAS 已有历史运行输出
 - [x] 走完基础 tiled GEMM 的 kernel 流程并保存首次自写草稿

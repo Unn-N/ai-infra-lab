@@ -1,0 +1,1 @@
+{"output":128,"thread_tile":4,"threads":1024,"regs":62,"static_shared":32768,"local":0,"blocks_per_SM":1,"kernel_max_threads":1024,"SMs":48}

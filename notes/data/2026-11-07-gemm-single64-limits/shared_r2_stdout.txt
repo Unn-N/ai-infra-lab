@@ -1,0 +1,28 @@
+==WARNING== Note: Running with uncontrolled GPU caches. Profiling results may be inconsistent.
+==WARNING== Note: Running with unmodified GPU clocks. If not controlled otherwise, profiling results may be inconsistent.
+==PROF== Connected to process 117670 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/single)
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 117670
+==PROF== Connected to process 117689 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/single)
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 117689
+==PROF== Connected to process 117702 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/single)
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 117702
+==PROF== Connected to process 117715 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/single)
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 117715
+==PROF== Connected to process 117728 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/single)
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 117728
+==PROF== Connected to process 117747 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/single)
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 117747
+==PROF== Connected to process 117760 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/single)
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 117760
+==PROF== Connected to process 117773 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/single)
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 117773
+==PROF== Creating report from application replay data: 0%..........100%
+==PROF== Report: /home/unn/ai-infra-lab/build/single64_limits_2026-11-07/shared_r2.ncu-rep

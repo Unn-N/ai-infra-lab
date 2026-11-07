@@ -1,0 +1,13 @@
+{
+  "source_sha256": {
+    "single64": "e0746da45b8a956068ca57632600a1b1c7ac4a3499ee2e2dc0b35218d20f5788",
+    "double64": "2afea4e76da63f428c863ef567cf129a371967761203fcb2f771303e90209a1a",
+    "single32": "0f8740d3edb2c3bdeb481f80cf68b8cdbcf9ec4e3d9d26682c18eb3d8496712d",
+    "double32": "fe6691ac795ca19ed3acecf99ab3fa41420c6bb49195fcbe5993e07ebcd5e5bd"
+  },
+  "flags": [
+    "-O3",
+    "-lineinfo",
+    "-arch=sm_120"
+  ]
+}

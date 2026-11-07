@@ -6,7 +6,11 @@
 // 直接引用同一份 kernel，只省略学习文件自己的 main，防止两个 main 冲突。
 #define GEMM_SELF_BENCH
 // [Codex 调整] 原版 gemm_self.cu 保留作对照，这里测正在修改的 re 版本。
-#include "gemm_self_re.cu"
+// [Codex 测量辅助] 默认测 re 版本；编译时可指定独立实验文件。
+#ifndef GEMM_SELF_SOURCE
+#define GEMM_SELF_SOURCE "gemm_self_re.cu"
+#endif
+#include GEMM_SELF_SOURCE
 
 #include <algorithm>
 #include <array>

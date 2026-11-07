@@ -1,0 +1,10 @@
+{
+  "gpu__time_duration.sum": 1426624.0,
+  "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 33596174.0,
+  "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 931024.0,
+  "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 134259470.0,
+  "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 9319632.0,
+  "l1tex__throughput.avg.pct_of_peak_sustained_elapsed": 78.88,
+  "group": "shared",
+  "repeat": 2
+}

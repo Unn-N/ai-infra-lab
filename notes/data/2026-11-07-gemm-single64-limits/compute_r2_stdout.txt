@@ -1,0 +1,13 @@
+==WARNING== Note: Running with uncontrolled GPU caches. Profiling results may be inconsistent.
+==WARNING== Note: Running with unmodified GPU clocks. If not controlled otherwise, profiling results may be inconsistent.
+==PROF== Connected to process 117557 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/single)
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 117557
+==PROF== Connected to process 117570 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/single)
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 117570
+==PROF== Connected to process 117589 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/single)
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 117589
+==PROF== Creating report from application replay data: 0%.....100%
+==PROF== Report: /home/unn/ai-infra-lab/build/single64_limits_2026-11-07/compute_r2.ncu-rep

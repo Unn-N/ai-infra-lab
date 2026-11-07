@@ -1,0 +1,10 @@
+#define GEMM_SELF_BENCH
+#include "gemm_self_re.cu"
+#include <cstdio>
+int main() {
+ cudaFuncAttributes attr{}; cudaDeviceProp p{}; int blocks=0;
+ CUDA_CHECK(cudaGetDeviceProperties(&p,0));
+ CUDA_CHECK(cudaFuncGetAttributes(&attr,gemm_tiled));
+ CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&blocks,gemm_tiled,256,0));
+ printf("SM=%d regs/thread=%d static_shared=%zu local/thread=%zu blocks/SM=%d threads/SM=%d\n",p.multiProcessorCount,attr.numRegs,attr.sharedSizeBytes,attr.localSizeBytes,blocks,p.maxThreadsPerMultiProcessor);
+}

@@ -1,0 +1,4 @@
+GPU=NVIDIA GeForce RTX 5070 OUTPUT_TILE=64 K_TILE=32 THREAD_TILE=4
+Per SM: registers=65536 sharedBytes=102400 maxThreads=1536
+Current kernel: threads/block=256 registers/thread=62 nominalRegisters/block=15872 staticSharedBytes/block=16384 localBytes/thread=0 maxResidentBlocks/SM=4
+Model ONLY: add one same-size shared buffer (16384 extra bytes/block), keep compiled register use unchanged => maxResidentBlocks/SM=3

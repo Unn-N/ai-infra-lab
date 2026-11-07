@@ -1,0 +1,35 @@
+{
+  "gpu": "NVIDIA GeForce RTX 5070",
+  "compile_flags": [
+    "-O3",
+    "-lineinfo",
+    "-arch=sm_120"
+  ],
+  "baseline_git_commit": "d9d4331162e1fb6ce09dd83e824543cbbdc15919",
+  "source_sha256": {
+    "gemm_self_re.cu": "e0746da45b8a956068ca57632600a1b1c7ac4a3499ee2e2dc0b35218d20f5788",
+    "gemm_self_double_buffer.cu": "2afea4e76da63f428c863ef567cf129a371967761203fcb2f771303e90209a1a"
+  },
+  "order": [
+    "single",
+    "double",
+    "double",
+    "single",
+    "single",
+    "double"
+  ],
+  "protocol": "same fixed inputs; 64 sampled CPU-double outputs checked before timing; 5 warmups, 3 rounds x 20 launches/process; 3 processes/variant; median of 9 per-launch batch averages; same buffers; no L2 flush; no allocation/copy/check in timing",
+  "resource_single": {
+    "regs_per_thread": 62,
+    "static_shared_bytes": 16384,
+    "local_bytes": 0,
+    "blocks_per_SM": 4
+  },
+  "resource_double": {
+    "regs_per_thread": 70,
+    "static_shared_bytes": 32768,
+    "local_bytes": 0,
+    "blocks_per_SM": 3
+  },
+  "sanitizer_status": "NOT VALIDATED: WDDM debugger interface initialization failed; device reported unsupported; no memory/race/synchronization cleanliness claim"
+}

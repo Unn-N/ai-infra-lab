@@ -3,7 +3,11 @@
 // ./build/gemm_self_check
 // 覆盖当前已测的小尺寸、非方阵、4×4 小块边缘和跨输出 tile 的情况。
 #define GEMM_SELF_BENCH
-#include "gemm_self_re.cu"
+// [Codex 测量辅助] 默认测 re 版本；编译时可指定独立实验文件。
+#ifndef GEMM_SELF_SOURCE
+#define GEMM_SELF_SOURCE "gemm_self_re.cu"
+#endif
+#include GEMM_SELF_SOURCE
 #include <vector>
 
 int main() {

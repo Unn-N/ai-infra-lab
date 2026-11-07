@@ -1,0 +1,1 @@
+SM=48 regs/thread=70 static_shared=32768 local/thread=0 blocks/SM=3 threads/SM=1536

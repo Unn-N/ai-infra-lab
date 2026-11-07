@@ -1,0 +1,114 @@
+[
+  {
+    "gpu__time_duration.sum": 1430720.0,
+    "dram__bytes.sum": 59846400.0,
+    "dram__bytes.sum.per_second": 41829568329.23,
+    "dram__bytes.sum.pct_of_peak_sustained_elapsed": 6.23,
+    "tag": "focus_single_2048_2048_2048_r1",
+    "variant": "single",
+    "shape": [
+      2048,
+      2048,
+      2048
+    ],
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 1570336.0,
+    "dram__bytes.sum": 52956416.0,
+    "dram__bytes.sum.per_second": 33722984125.69,
+    "dram__bytes.sum.pct_of_peak_sustained_elapsed": 5.02,
+    "tag": "focus_double_2048_2048_2048_r1",
+    "variant": "double",
+    "shape": [
+      2048,
+      2048,
+      2048
+    ],
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 44928.0,
+    "dram__bytes.sum": 2889216.0,
+    "dram__bytes.sum.per_second": 64307692307.69,
+    "dram__bytes.sum.pct_of_peak_sustained_elapsed": 9.58,
+    "tag": "focus_single_128_1024_512_r1",
+    "variant": "single",
+    "shape": [
+      128,
+      1024,
+      512
+    ],
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 25664.0,
+    "dram__bytes.sum": 2387968.0,
+    "dram__bytes.sum.per_second": 93047381546.13,
+    "dram__bytes.sum.pct_of_peak_sustained_elapsed": 13.9,
+    "tag": "focus_double_128_1024_512_r1",
+    "variant": "double",
+    "shape": [
+      128,
+      1024,
+      512
+    ],
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 1566656.0,
+    "dram__bytes.sum": 48361984.0,
+    "dram__bytes.sum.per_second": 30869561665.1,
+    "dram__bytes.sum.pct_of_peak_sustained_elapsed": 4.6,
+    "tag": "focus_double_2048_2048_2048_r2",
+    "variant": "double",
+    "shape": [
+      2048,
+      2048,
+      2048
+    ],
+    "repeat": 2
+  },
+  {
+    "gpu__time_duration.sum": 1434688.0,
+    "dram__bytes.sum": 66502400.0,
+    "dram__bytes.sum.per_second": 46353214078.6,
+    "dram__bytes.sum.pct_of_peak_sustained_elapsed": 6.9,
+    "tag": "focus_single_2048_2048_2048_r2",
+    "variant": "single",
+    "shape": [
+      2048,
+      2048,
+      2048
+    ],
+    "repeat": 2
+  },
+  {
+    "gpu__time_duration.sum": 28416.0,
+    "dram__bytes.sum": 2547200.0,
+    "dram__bytes.sum.per_second": 89639639639.64,
+    "dram__bytes.sum.pct_of_peak_sustained_elapsed": 13.36,
+    "tag": "focus_double_128_1024_512_r2",
+    "variant": "double",
+    "shape": [
+      128,
+      1024,
+      512
+    ],
+    "repeat": 2
+  },
+  {
+    "gpu__time_duration.sum": 45056.0,
+    "dram__bytes.sum": 3028480.0,
+    "dram__bytes.sum.per_second": 67215909090.91,
+    "dram__bytes.sum.pct_of_peak_sustained_elapsed": 10.02,
+    "tag": "focus_single_128_1024_512_r2",
+    "variant": "single",
+    "shape": [
+      128,
+      1024,
+      512
+    ],
+    "repeat": 2
+  }
+]

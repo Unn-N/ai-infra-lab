@@ -1,0 +1,37 @@
+==WARNING== Note: Running with uncontrolled GPU caches. Profiling results may be inconsistent.
+==WARNING== Note: Running with unmodified GPU clocks. If not controlled otherwise, profiling results may be inconsistent.
+==PROF== Connected to process 102923 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/double)
+Profile target M=128 N=1024 K=512, config=64/32/4, C[0]=12.1545
+==PROF== Disconnected from process 102923
+==PROF== Connected to process 102942 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/double)
+Profile target M=128 N=1024 K=512, config=64/32/4, C[0]=12.1545
+==PROF== Disconnected from process 102942
+==PROF== Connected to process 102955 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/double)
+Profile target M=128 N=1024 K=512, config=64/32/4, C[0]=12.1545
+==PROF== Disconnected from process 102955
+==PROF== Connected to process 102968 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/double)
+Profile target M=128 N=1024 K=512, config=64/32/4, C[0]=12.1545
+==PROF== Disconnected from process 102968
+==PROF== Connected to process 102987 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/double)
+Profile target M=128 N=1024 K=512, config=64/32/4, C[0]=12.1545
+==PROF== Disconnected from process 102987
+==PROF== Connected to process 103000 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/double)
+Profile target M=128 N=1024 K=512, config=64/32/4, C[0]=12.1545
+==PROF== Disconnected from process 103000
+==PROF== Connected to process 103013 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/double)
+Profile target M=128 N=1024 K=512, config=64/32/4, C[0]=12.1545
+==PROF== Disconnected from process 103013
+==PROF== Connected to process 103026 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/double)
+Profile target M=128 N=1024 K=512, config=64/32/4, C[0]=12.1545
+==PROF== Disconnected from process 103026
+==PROF== Connected to process 103045 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/double)
+Profile target M=128 N=1024 K=512, config=64/32/4, C[0]=12.1545
+==PROF== Disconnected from process 103045
+==PROF== Connected to process 103058 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/double)
+Profile target M=128 N=1024 K=512, config=64/32/4, C[0]=12.1545
+==PROF== Disconnected from process 103058
+==PROF== Connected to process 103071 (/home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/double)
+Profile target M=128 N=1024 K=512, config=64/32/4, C[0]=12.1545
+==PROF== Disconnected from process 103071
+==PROF== Creating report from application replay data: 0%.............100%
+==PROF== Report: /home/unn/ai-infra-lab/build/double_buffer_profile_2026-11-07/double_128_1024_512_r2.ncu-rep

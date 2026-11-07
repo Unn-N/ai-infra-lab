@@ -1,0 +1,6 @@
+{
+  "single64": "SM=48 regs/thread=62 static_shared=16384 local/thread=0 blocks/SM=4 threads/SM=1536",
+  "double64": "SM=48 regs/thread=70 static_shared=32768 local/thread=0 blocks/SM=3 threads/SM=1536",
+  "single32": "SM=48 regs/thread=42 static_shared=8192 local/thread=0 blocks/SM=5 threads/SM=1536",
+  "double32": "SM=48 regs/thread=56 static_shared=16384 local/thread=0 blocks/SM=4 threads/SM=1536"
+}

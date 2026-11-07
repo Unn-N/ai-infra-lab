@@ -1,0 +1,13 @@
+{
+  "gpu__time_duration.sum": 1429888.0,
+  "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 33601062.0,
+  "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 946269.0,
+  "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 134264358.0,
+  "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 9334877.0,
+  "smsp__sass_inst_executed_op_shared_ld.sum": 50331648.0,
+  "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+  "smsp__issue_active.avg.pct_of_peak_sustained_elapsed": 71.91,
+  "sm__inst_executed_pipe_fma.avg.pct_of_peak_sustained_elapsed": 38.78,
+  "variant": "baseline",
+  "repeat": 2
+}

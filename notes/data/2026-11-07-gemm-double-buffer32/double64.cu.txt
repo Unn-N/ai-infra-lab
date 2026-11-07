@@ -1,0 +1,201 @@
+#include <cuda_runtime.h>
+#include <cuda_pipeline.h>  // [Codex 双缓冲] 发起、提交和等待 global → shared 异步拷贝。
+#include <cublas_v2.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
+
+// ===== Codex 补充：把原 TILE 的三种职责分别命名 =====
+constexpr int OUTPUT_TILE = 64;  // 一个 block 负责的输出方块边长。
+constexpr int K_TILE      = 32;  // 每轮沿 K 方向搬入、计算的长度。
+constexpr int THREAD_TILE = 4;   // [Codex 调整] 一个线程负责 4×4 个输出。
+
+// [Codex 调整] 输出块必须能均分给线程；K_TILE 的长度用于独立的加载循环。
+static_assert(OUTPUT_TILE > 0 && K_TILE > 0 && THREAD_TILE > 0, "Tile sizes must be positive.");
+static_assert(OUTPUT_TILE % THREAD_TILE == 0, "Output tile must be divisible by thread tile.");
+// ===== Codex 补充结束 =====
+
+// ===== Codex 补充：CUDA 错误检查 =====
+// CUDA API 会返回状态码。失败时打印调用位置并退出，避免带着错误继续运行。
+// do/while (0) 让这个多行宏可以像普通的一条语句那样使用。
+#define CUDA_CHECK(expr)                                                        \
+    do {                                                                        \
+        cudaError_t status = (expr);                                             \
+        if (status != cudaSuccess) {                                             \
+            std::fprintf(stderr, "CUDA error: %s (%s:%d)\n",                     \
+                         cudaGetErrorString(status), __FILE__, __LINE__);         \
+            std::exit(EXIT_FAILURE);                                             \
+        }                                                                       \
+    } while (0)
+// ===== Codex 补充结束 =====
+
+// ===== Codex 实现：64×64 输出、每线程 4×4；两组 shared 做异步双缓冲 =====
+__global__ void gemm_tiled(const float* __restrict__ A, const float* __restrict__ B,
+                           float* __restrict__ C, int M, int N, int K) {
+    __shared__ float As[2][OUTPUT_TILE][K_TILE];
+    __shared__ float Bs[2][K_TILE][OUTPUT_TILE];
+
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
+    const int block_row = blockIdx.y * OUTPUT_TILE;
+    const int block_col = blockIdx.x * OUTPUT_TILE;
+
+    // 1. 每线程负责的输出小块：在 shared 中从 (local_row, local_col) 开始，
+    //    在整个 C 中从 (row, col) 开始。相邻线程的小块不重叠。
+    const int local_row = ty * THREAD_TILE;
+    const int local_col = tx * THREAD_TILE;
+    const int row = block_row + local_row;
+    const int col = block_col + local_col;
+    float acc[THREAD_TILE][THREAD_TILE] = {};  // 跨所有 K 轮次保留十六个部分和。
+
+    // 2. 搬运任务按 block 内一维线程编号分配，与线程的输出位置分开。
+    const int tid = ty * blockDim.x + tx;
+    const int threads = blockDim.x * blockDim.y;
+    // [Codex 双缓冲] 每个线程发起自己负责的异步拷贝，先不等它完成。
+    // 有效地址用 4 字节拷贝，越界位置直接补零；不对越界源地址发起读取。
+    // 这是一组 A/B 加载任务，commit 后可与当前缓冲的计算重叠。
+    auto load_tile = [&](int stage, int k0) {
+        for (int index = tid; index < OUTPUT_TILE * K_TILE; index += threads) {
+            const int r = index / K_TILE;
+            const int k = index % K_TILE;
+            if (block_row + r < M && k0 + k < K) {
+                __pipeline_memcpy_async(&As[stage][r][k],
+                    A + size_t(block_row + r) * K + k0 + k, sizeof(float));
+            } else {
+                As[stage][r][k] = 0.0f;
+            }
+        }
+        for (int index = tid; index < K_TILE * OUTPUT_TILE; index += threads) {
+            const int k = index / OUTPUT_TILE;
+            const int c = index % OUTPUT_TILE;
+            if (k0 + k < K && block_col + c < N) {
+                __pipeline_memcpy_async(&Bs[stage][k][c],
+                    B + size_t(k0 + k) * N + block_col + c, sizeof(float));
+            } else {
+                Bs[stage][k][c] = 0.0f;
+            }
+        }
+        __syncwarp();  // 边缘分支之后，warp 汇合再提交这批拷贝。
+        __pipeline_commit();
+    };
+
+    // [Codex 双缓冲] 预装第一组。wait 只等本线程的拷贝，
+    // 后面的 block 同步保证其他线程负责的元素也已到齐。
+    int stage = 0;
+    load_tile(stage, 0);
+    __pipeline_wait_prior(0);
+    __syncthreads();
+
+    for (int k0 = 0; k0 < K; k0 += K_TILE) {
+        // 当前读 stage，下一轮写另一组；此处发起后立刻进入当前轮计算。
+        if (k0 + K_TILE < K) load_tile(stage ^ 1, k0 + K_TILE);
+
+        // 3. 每个 k 取四个 A、四个 B，交叉组合做十六次乘加。
+        //    a/b 和 acc 是线程私有的，目标是让编译器放在寄存器中复用。
+        for (int k = 0; k < K_TILE; ++k) {
+            float a[THREAD_TILE];
+            float b[THREAD_TILE];
+            for (int i = 0; i < THREAD_TILE; ++i) a[i] = As[stage][local_row + i][k];
+            for (int j = 0; j < THREAD_TILE; ++j) b[j] = Bs[stage][k][local_col + j];
+            for (int i = 0; i < THREAD_TILE; ++i) {
+                for (int j = 0; j < THREAD_TILE; ++j) {
+                    acc[i][j] += a[i] * b[j];
+                }
+            }
+        }
+        // [Codex 双缓冲] 下一组加载完成、所有线程用完当前组，才切换。
+        // 这个 block 同步也保证下一轮可安全覆盖刚刚用完的旧缓冲。
+        __pipeline_wait_prior(0);
+        __syncthreads();
+        stage ^= 1;
+    }
+
+    // 4. 十六个结果分别检查边界；边缘小块可能只有部分位置属于有效输出。
+    for (int i = 0; i < THREAD_TILE; ++i) {
+        for (int j = 0; j < THREAD_TILE; ++j) {
+            if (row + i < M && col + j < N) {
+                C[size_t(row + i) * N + col + j] = acc[i][j];
+            }
+        }
+    }
+}
+// ===== Codex 实现结束 =====
+
+// [Codex 说明] 下列 run_gemm 的流程由你起草；我整理了格式、给已有 API
+// 加上 CUDA_CHECK，并在标记处补齐执行检查、结果拷回和释放显存。
+// 调用前：hA、hB 已填好，hC 有 M*N 个 float 的空间；M、N、K 为正数。
+void run_gemm(const float* hA, const float* hB, float* hC, int M, int N, int K) {
+    float *dA = nullptr, *dB = nullptr, *dC = nullptr;
+    const size_t bytesA = size_t(M) * K * sizeof(float);
+    const size_t bytesB = size_t(K) * N * sizeof(float);
+    const size_t bytesC = size_t(M) * N * sizeof(float);
+
+    CUDA_CHECK(cudaMalloc(&dA, bytesA));
+    CUDA_CHECK(cudaMalloc(&dB, bytesB));
+    CUDA_CHECK(cudaMalloc(&dC, bytesC));
+
+    CUDA_CHECK(cudaMemcpy(dA, hA, bytesA, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(dB, hB, bytesB, cudaMemcpyHostToDevice));
+
+    // [Codex 调整] 64×64 输出 / 每线程 4×4 输出 = 16×16 个线程。
+    dim3 block(OUTPUT_TILE / THREAD_TILE, OUTPUT_TILE / THREAD_TILE);
+    // [Codex 调整] grid 按每个 block 覆盖的输出范围计算。
+    dim3 grid((N + OUTPUT_TILE - 1) / OUTPUT_TILE,
+              (M + OUTPUT_TILE - 1) / OUTPUT_TILE);
+
+    gemm_tiled<<<grid, block>>>(dA, dB, dC, M, N, K);
+
+    // ===== Codex 补充：完成一次调用 =====
+    // 检查启动错误（例如不合法的启动配置），再等待 GPU 完成，检查执行错误。
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    // kernel 把输出写进 dC；这里把结果复制到调用者准备的 CPU 数组 hC。
+    CUDA_CHECK(cudaMemcpy(hC, dC, bytesC, cudaMemcpyDeviceToHost));
+
+    // 结果已经取回，释放本次调用申请的三块显存。hA/hB/hC 由调用者管理。
+    CUDA_CHECK(cudaFree(dA));
+    CUDA_CHECK(cudaFree(dB));
+    CUDA_CHECK(cudaFree(dC));
+    // ===== Codex 补充结束 =====
+}
+
+// ===== Codex 补充：最小测试入口 =====
+// 只验证一次矩阵乘法；先不加入随机填值、计时或 cuBLAS 对照。
+// [Codex 补充] 测量入口引用本文件时省略这个 main；单独编译仍运行小例子。
+#ifndef GEMM_SELF_BENCH
+int main() {
+    const int M = 2, N = 2, K = 3;
+
+    // CPU 输入按行连续存放：A 为 2*3，B 为 3*2。
+    const float hA[M * K] = {1, 2, 3,
+                            4, 5, 6};
+    const float hB[K * N] = {7,  8,
+                            9, 10,
+                           11, 12};
+    float hC[M * N] = {};  // 给拷回的结果预留 CPU 空间。
+
+    // 手算参考值：例如 C[0][0] = 1*7 + 2*9 + 3*11 = 58。
+    const float expected[M * N] = {58,  64,
+                                 139, 154};
+
+    // 这是 CPU 上的普通函数调用；真正的 GPU 启动语句在 run_gemm 内部。
+    run_gemm(hA, hB, hC, M, N, K);
+
+    bool passed = true;
+    for (int row = 0; row < M; ++row) {
+        for (int col = 0; col < N; ++col) {
+            const int i = row * N + col;
+            // 浮点结果通常按容差比较；非有限数也必须判为失败。
+            const bool ok = std::isfinite(hC[i]) &&
+                            std::fabs(hC[i] - expected[i]) < 1e-5f;
+            std::printf("C[%d][%d] = %.1f, expected %.1f: %s\n",
+                        row, col, hC[i], expected[i], ok ? "OK" : "FAIL");
+            passed = passed && ok;
+        }
+    }
+    std::printf("GEMM correctness: %s\n", passed ? "PASS" : "FAIL");
+    return passed ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+#endif
+// ===== Codex 补充结束 =====

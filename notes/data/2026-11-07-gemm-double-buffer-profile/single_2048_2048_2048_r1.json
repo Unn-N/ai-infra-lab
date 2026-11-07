@@ -1,0 +1,31 @@
+{
+  "gpu__time_duration.sum": 1442880.0,
+  "dram__bytes_op_read.sum": 39513344.0,
+  "dram__bytes_op_write.sum": 20263680.0,
+  "dram__bytes.sum.per_second": 41428964293.63,
+  "dram__bytes.sum.pct_of_peak_sustained_elapsed": 6.17,
+  "dram__cycles_active.avg": 1245354.67,
+  "dram__cycles_elapsed.avg": 20182186.67,
+  "lts__t_sector_hit_rate.pct": 88.84,
+  "lts__t_sectors.sum": 37590277.0,
+  "lts__t_sectors.sum.per_second": 26052254518.74,
+  "lts__throughput.avg.pct_of_peak_sustained_elapsed": 21.88,
+  "sm__throughput.avg.pct_of_peak_sustained_elapsed": 71.73,
+  "sm__cycles_active.avg.pct_of_peak_sustained_elapsed": 97.37,
+  "smsp__issue_active.avg.pct_of_peak_sustained_active": 73.7,
+  "smsp__issue_active.avg.pct_of_peak_sustained_elapsed": 71.73,
+  "smsp__warp_issue_stalled_long_scoreboard_per_warp_active.pct": 9.98,
+  "smsp__warp_issue_stalled_short_scoreboard_per_warp_active.pct": 8.28,
+  "smsp__warp_issue_stalled_barrier_per_warp_active.pct": 6.65,
+  "smsp__warp_issue_stalled_not_selected_per_warp_active.pct": 33.59,
+  "smsp__warps_eligible.avg.per_cycle_active": 3.27,
+  "variant": "single",
+  "shape": [
+    2048,
+    2048,
+    2048
+  ],
+  "repeat": 1,
+  "tag": "single_2048_2048_2048_r1",
+  "dram_active_pct": 6.170563628029311
+}
