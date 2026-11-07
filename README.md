@@ -1,5 +1,7 @@
 # ai-infra-lab
 
+> **2026-11-07 里程碑：** 已完成基础 GEMM、寄存器分块实现和多组性能对照。当前成果、验证范围与复现命令见 [里程碑记录](notes/12-gemm-milestone.md)。
+>
 > 2026-11-06 接手核对：以 WSL Ubuntu 的 `/home/unn/ai-infra-lab` 为当前仓库。目录、Git 基线和验证范围见 [HANDOFF.md](HANDOFF.md)。当前学习记录见 [一个 block 怎样算出一块 C](notes/06-gemm-tiling.md)。
 >
 > 下方 Softmax 性能数字来自历史实验，本次没有复测性能；缓存、带宽和瓶颈解释尚未全面复核。`ROADMAP.md` 是早期助手建议，并非用户确认的计划。
@@ -16,7 +18,7 @@
 | 逐行 softmax（warp 版） | ✅ | `N=128` 从 **19% → 93%**，**4.96×** |
 | naive Softmax 正确性测试 | ✅ | 2026-11-06 从源码重编译，5/5 PASS；不覆盖全部独立优化版本 |
 | GEMM 基准 | 🚧 | 历史上已运行 naive / tiled / cuBLAS；性能瓶颈待验证 |
-| 自写 tiled GEMM | 🚧 | 2026-11-07 已走完基础 kernel，保存首次草稿；编译与索引问题待处理，尚无正确性验证 |
+| GEMM 首个实验里程碑 | ✅ | 基础实现 → TILE 对照 → 每线程 2×2 / 4×4；当前七组 CPU 全输出检查通过，逐尺寸性能与退步均保留 |
 
 ### v2 的 4.96× 是怎么来的
 
@@ -53,7 +55,10 @@ softmax/
   hello_cuda.cu        环境自检
 gemm/
   gemm_bench.cu        GEMM 基准（朴素 / tiled / cuBLAS 对照）
-  gemm_self.cu         自写 tiled kernel 学习草稿（尚未通过编译/正确性验证）
+  gemm_self.cu         原自写 tiled 基线、host 调用与手算小例子
+  gemm_self_re.cu      当前工作副本：64×64 输出块、16×16 线程、每线程 4×4 输出
+  gemm_self_check.cu   当前 re 版本的七组 CPU 全输出正确性检查
+  gemm_self_bench.cu   Codex 编写的独立测量入口，引用 gemm_self_re.cu
 notes/                 实验记录
 ```
 
@@ -71,9 +76,22 @@ nvcc -O3 -arch=sm_120 softmax/softmax_v1.cu          -o build/softmax_v1      &&
 nvcc -O3 -arch=sm_120 softmax/softmax_v2.cu          -o build/softmax_v2      && ./build/softmax_v2 1
 nvcc -O3 -arch=sm_120 softmax/softmax_v2_self_bench.cu -o build/bench_v2self && ./build/bench_v2self
 nvcc -O3 -arch=sm_120 gemm/gemm_bench.cu -o build/gemm_bench -lcublas && ./build/gemm_bench
+nvcc -O3 -arch=sm_120 gemm/gemm_self_check.cu -o build/gemm_self_check && ./build/gemm_self_check
+nvcc -O3 -arch=sm_120 gemm/gemm_self_bench.cu -o build/gemm_self_bench && ./build/gemm_self_bench
 ```
 
 非交互环境中若找不到 `nvcc`，使用 `/usr/local/cuda/bin/nvcc`。
+
+自写 GEMM 的独立检查与测量入口见上方命令。实验按阶段记录：
+
+| 记录 | 内容 |
+|---|---|
+| [07 · 测量基线](notes/07-gemm-baseline.md) | 五组输入、计时与缓存口径 |
+| [08 · 首次 TILE 对照](notes/08-gemm-tile-size.md) | 16/32 与 64 的启动限制 |
+| [09 · TILE 扫描](notes/09-gemm-tile-sweep.md) | naive、TILE=32/16/8/4 |
+| [10 · 每线程 2×2](notes/10-gemm-register-2x2.md) | 固定 32×32 输出块，调整线程分工 |
+| [11 · 每线程 4×4](notes/11-gemm-register-4x4.md) | 扩大输出块的收益与退步 |
+| [12 · 里程碑](notes/12-gemm-milestone.md) | 当前状态、验证范围和下一步候选 |
 
 **编译产物统一输出到 `build/`**，源码目录保持干净。`build/` 已在 `.gitignore` 里，不用每次想“这个要不要提交”。
 
@@ -98,4 +116,7 @@ nvcc -O3 -arch=sm_120 gemm/gemm_bench.cu -o build/gemm_bench -lcublas && ./build
 - [ ] 把 v2 的两层归约拆成独立可测的中间版本
 - [x] GEMM naive / shared tiled / cuBLAS 已有历史运行输出
 - [x] 走完基础 tiled GEMM 的 kernel 流程并保存首次自写草稿
-- [ ] 核对自写版本的索引与编译问题，补 host 入口并验证正确性；见 [学习记录](notes/06-gemm-tiling.md#2026-11-07--读完基础-kernel保存第一次自写草稿)
+- [x] 核对自写版本的索引与编译问题，补 host 入口并完成初步正确性验证
+- [ ] 继续给自写 GEMM 加解释注释，理解 Codex 标注的补充与坐标修正；见 [学习记录](notes/06-gemm-tiling.md)
+
+- [x] 完成首轮 GEMM 寄存器分块与性能实验里程碑；保留原始数据和独立正确性入口

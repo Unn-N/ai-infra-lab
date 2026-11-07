@@ -2,6 +2,8 @@
 
 核对日期：2026-11-06（Asia/Hong_Kong）。此记录由 Codex 根据实际文件、Git 状态和 DSH「问候」中的相关原文整理。
 
+**当前状态（2026-11-07 里程碑）：** 当前 re 配置为 OUTPUT_TILE=64、K_TILE=32、THREAD_TILE=4；原 self 为对照，独立检查与测量入口均已保存。最新状态与复现见 [12-gemm-milestone.md](notes/12-gemm-milestone.md)。下文接手基线及按时间追加的进度保留为历史记录，以最新里程碑为准。
+
 ## 项目位置与目录
 
 当前源码、Git 历史、笔记与编译运行均以 **WSL Ubuntu 的 `/home/unn/ai-infra-lab`** 为准，用户为 `unn`。
@@ -26,7 +28,10 @@ ai-infra-lab/
     softmax_test.cu            内嵌 naive 实现的五用例正确性程序
   gemm/
     gemm_bench.cu              naive / shared tiled / cuBLAS 对照
-    gemm_self.cu               首次自写 tiled kernel 草稿（2026-11-07，待验证）
+    gemm_self.cu               自写 tiled kernel、host 调用与手算小例子
+    gemm_self_re.cu            当前 64/32/4 寄存器分块版本，带 Codex 实现注释
+    gemm_self_check.cu         七组 CPU 全输出正确性检查
+    gemm_self_bench.cu         Codex 编写的独立测量入口，目前引用 re 版本
   notes/
     01-bottleneck.md           早期瓶颈分析与实验
     02-execution-model.md      早期执行模型笔记
@@ -112,6 +117,27 @@ Softmax 已经历示例阅读、用户重写、shared 归约到 warp 归约、�
 
 2026-11-07 已读完基础 tiled kernel 的核心计算流程，保留了 `gemm/gemm_self.cu` 的第一次自写草稿。用户明确表示“知道怎么回事，但从空白重新写还需要推导”，继续以独立尝试和按需提示推进。
 
-下一步先处理自写文件的 Clang 专用头文件编译错误，再让用户核对输出坐标与 shared 布局的对应关系；随后补 host 入口并做小尺寸正确性验证。详细过程与实际编译错误见 [当日学习记录](notes/06-gemm-tiling.md)。尚未有自写 GEMM 的通过结果或新性能数据。
+同日上午，用户继续完成 host 调用骨架，并要求 Codex 补齐且标明作者。当前 `gemm_self.cu` 已有带 Codex 注释的错误检查、输出坐标修正、调用收尾和最小 main；编译、手算例子与 4 组 CPU 参考对照均通过。前述初稿失败记录保留为历史过程，详细验证范围见 [当日学习记录](notes/06-gemm-tiling.md)。下一步由用户理解补充代码、解释索引并继续写自己的注释；没有新增性能数据。
 
 本次按用户要求将接手文档、学习记录、自写草稿以及原有 `gemm_bench.cu` 未提交改动一起保存为 Git 检查点。2026-11-06 的 Git 基线与验证记录保留为历史事实；最终提交与远端同步状态以实际 Git 结果为准。
+
+
+2026-11-07 下午补充：用户希望沿用 Softmax 的小步迭代路径，并明确由 Codex 负责测量辅助代码、保持其余代码简单。已新增独立 `gemm_self_bench.cu`，原计算代码仅增加省略 main 的开关；五组输入抽查通过，首轮基线与完整口径见 [07-gemm-baseline.md](notes/07-gemm-baseline.md)。此阶段没有改动 GEMM 算法；后续逐项提出假设、实现和比较，不要求先完成通用自动选型。
+
+
+2026-11-07 下午 TILE 实验：按用户要求仅改常量测试 16/64，并与 32 交错对照。16 的五组抽查通过，四组非最小输入在两次对照中均更快；128³ 波动大，暂不判断。64 编译成功但 4096 线程/block 超过设备 1024 上限，启动失败，没有性能数字。实验后源码恢复 TILE=32。详细结果见 [08-gemm-tile-size.md](notes/08-gemm-tile-size.md)。
+
+
+随后用户要求增加 naive 与 TILE=8/4 对照。已使用同一测量入口在临时副本中完成 5 个版本、3 次交错进程的实验，学习源码与测量入口均未改动。四组非最小输入的汇总结果在 16 最快，继续缩到 8/4 回退，4 慢于固定 block=32×32 的 naive；128³ 波动大，不做稳定排名。表格、条件和原始数据见 [09-gemm-tile-sweep.md](notes/09-gemm-tile-sweep.md)。
+
+
+2026-11-07 15:30 后：按用户要求，仅在其新建的 `gemm_self_re.cu` 中将 TILE 拆为 OUTPUT_TILE=32、K_TILE=32、THREAD_TILE=1，并同步测量入口。原 `gemm_self.cu` 未改动。四组 CPU 全输出对照、小例子和五组测量抽查通过；当前 static_assert 保留单输出与原加载布局的限制。用户明确要求后续优化步骤自己考虑，不替其实现寄存器分块。
+
+
+2026-11-07 15:39 后，用户确认执行每线程 2×2 的首项实验：当前 re 版本是 OUTPUT_TILE=32、K_TILE=32、THREAD_TILE=2，block=16×16。Codex 实现并验证了新加载/累加/写回流程，原版 self 保留。四组 CPU 全输出对照与全部性能输入抽查通过；同期三次交错对照中四组非最小输入约 1.96—2.94× 加速，128³ 汇总退步且波动大。资源查询为 42 寄存器/线程、8192 字节 shared/block、理论最多 5 block/SM。详见 [10-gemm-register-2x2.md](notes/10-gemm-register-2x2.md)。
+
+
+2026-11-07 15:58 后按用户要求将当前 re 配置改为 OUTPUT_TILE=64、K_TILE=32、THREAD_TILE=4，block 保持 16×16。小例子、七组 CPU 全输出对照和全部性能抽查通过。同期交错对照中 2048³ 约 1.57× 加速，512³ 约 1.04×，另外三组退步；资源为 62 寄存器/线程、16 KiB shared/block、理论最多 4 block/SM。当前源码保留新配置，旧版快照保留于 build/register_4x4_2026-11-07。详见 [11-gemm-register-4x4.md](notes/11-gemm-register-4x4.md)。
+
+
+2026-11-07 16:06，用户明确将当前位置确认为里程碑并要求提交。整理当前实现、检查/测量入口、实验表格和原始输出，补充 notes/12；将已使用的七组 CPU 全输出对照正式保存为 gemm_self_check.cu。K_TILE 后续对照尚未开始。

@@ -1,0 +1,1417 @@
+Experiment metadata and all parsed timing samples:
+{
+  "date": "2026-11-07",
+  "source_sha256": "0306184a4d13de625b8262c9ed1bf1d0b4702025a8764f9e4707f64c3207eb39",
+  "bench_sha256": "b0105acef1261595fea6d6ea2afb76e3dd127222eef23938242b2445632be065",
+  "flags": [
+    "-O3",
+    "-arch=sm_120"
+  ],
+  "timing": "5 warmups, 3 rounds of 20 launches per process; 3 passes; warm buffers, no L2 flush",
+  "naive": "Original gemm_naive body, renamed gemm_tiled only to reuse identical harness; block 32x32",
+  "orders": [
+    [
+      "tile32",
+      "tile16",
+      "tile8",
+      "tile4",
+      "naive32"
+    ],
+    [
+      "naive32",
+      "tile4",
+      "tile8",
+      "tile16",
+      "tile32"
+    ],
+    [
+      "tile8",
+      "tile32",
+      "tile4",
+      "tile16",
+      "naive32"
+    ]
+  ],
+  "runs": [
+    {
+      "pass": 1,
+      "variant": "tile32",
+      "records": [
+        {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "round_ms": [
+            0.009917,
+            0.011702,
+            0.014358
+          ],
+          "process_median_ms": 0.011702,
+          "sample_max_error": 2.93e-06
+        },
+        {
+          "shape": [
+            512,
+            512,
+            512
+          ],
+          "round_ms": [
+            0.125342,
+            0.135165,
+            0.112574
+          ],
+          "process_median_ms": 0.125342,
+          "sample_max_error": 7.11e-06
+        },
+        {
+          "shape": [
+            2048,
+            2048,
+            2048
+          ],
+          "round_ms": [
+            6.542491,
+            6.48655,
+            6.468707
+          ],
+          "process_median_ms": 6.48655,
+          "sample_max_error": 3.19e-05
+        },
+        {
+          "shape": [
+            128,
+            1024,
+            512
+          ],
+          "round_ms": [
+            0.069117,
+            0.057738,
+            0.057776
+          ],
+          "process_median_ms": 0.057776,
+          "sample_max_error": 9.63e-06
+        },
+        {
+          "shape": [
+            127,
+            513,
+            257
+          ],
+          "round_ms": [
+            0.024858,
+            0.023811,
+            0.023426
+          ],
+          "process_median_ms": 0.023811,
+          "sample_max_error": 4.76e-06
+        }
+      ]
+    },
+    {
+      "pass": 1,
+      "variant": "tile16",
+      "records": [
+        {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "round_ms": [
+            0.007922,
+            0.00776,
+            0.01047
+          ],
+          "process_median_ms": 0.007922,
+          "sample_max_error": 2.93e-06
+        },
+        {
+          "shape": [
+            512,
+            512,
+            512
+          ],
+          "round_ms": [
+            0.101523,
+            0.101472,
+            0.102914
+          ],
+          "process_median_ms": 0.101523,
+          "sample_max_error": 7.11e-06
+        },
+        {
+          "shape": [
+            2048,
+            2048,
+            2048
+          ],
+          "round_ms": [
+            6.159623,
+            6.119298,
+            6.0732
+          ],
+          "process_median_ms": 6.119298,
+          "sample_max_error": 3.19e-05
+        },
+        {
+          "shape": [
+            128,
+            1024,
+            512
+          ],
+          "round_ms": [
+            0.053682,
+            0.053998,
+            0.05501
+          ],
+          "process_median_ms": 0.053998,
+          "sample_max_error": 9.63e-06
+        },
+        {
+          "shape": [
+            127,
+            513,
+            257
+          ],
+          "round_ms": [
+            0.020099,
+            0.018619,
+            0.018523
+          ],
+          "process_median_ms": 0.018619,
+          "sample_max_error": 4.76e-06
+        }
+      ]
+    },
+    {
+      "pass": 1,
+      "variant": "tile8",
+      "records": [
+        {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "round_ms": [
+            0.013274,
+            0.011136,
+            0.011259
+          ],
+          "process_median_ms": 0.011259,
+          "sample_max_error": 2.93e-06
+        },
+        {
+          "shape": [
+            512,
+            512,
+            512
+          ],
+          "round_ms": [
+            0.130835,
+            0.129848,
+            0.129581
+          ],
+          "process_median_ms": 0.129848,
+          "sample_max_error": 7.11e-06
+        },
+        {
+          "shape": [
+            2048,
+            2048,
+            2048
+          ],
+          "round_ms": [
+            8.089842,
+            8.079655,
+            8.093111
+          ],
+          "process_median_ms": 8.089842,
+          "sample_max_error": 3.19e-05
+        },
+        {
+          "shape": [
+            128,
+            1024,
+            512
+          ],
+          "round_ms": [
+            0.078571,
+            0.068013,
+            0.068074
+          ],
+          "process_median_ms": 0.068074,
+          "sample_max_error": 9.63e-06
+        },
+        {
+          "shape": [
+            127,
+            513,
+            257
+          ],
+          "round_ms": [
+            0.020875,
+            0.021347,
+            0.020699
+          ],
+          "process_median_ms": 0.020875,
+          "sample_max_error": 4.76e-06
+        }
+      ]
+    },
+    {
+      "pass": 1,
+      "variant": "tile4",
+      "records": [
+        {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "round_ms": [
+            0.015995,
+            0.017864,
+            0.019715
+          ],
+          "process_median_ms": 0.017864,
+          "sample_max_error": 2.93e-06
+        },
+        {
+          "shape": [
+            512,
+            512,
+            512
+          ],
+          "round_ms": [
+            0.388546,
+            0.387845,
+            0.387488
+          ],
+          "process_median_ms": 0.387845,
+          "sample_max_error": 7.11e-06
+        },
+        {
+          "shape": [
+            2048,
+            2048,
+            2048
+          ],
+          "round_ms": [
+            26.611149,
+            25.765268,
+            25.284025
+          ],
+          "process_median_ms": 25.765268,
+          "sample_max_error": 3.19e-05
+        },
+        {
+          "shape": [
+            128,
+            1024,
+            512
+          ],
+          "round_ms": [
+            0.19641,
+            0.195066,
+            0.195298
+          ],
+          "process_median_ms": 0.195298,
+          "sample_max_error": 9.63e-06
+        },
+        {
+          "shape": [
+            127,
+            513,
+            257
+          ],
+          "round_ms": [
+            0.053616,
+            0.054438,
+            0.053731
+          ],
+          "process_median_ms": 0.053731,
+          "sample_max_error": 4.76e-06
+        }
+      ]
+    },
+    {
+      "pass": 1,
+      "variant": "naive32",
+      "records": [
+        {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "round_ms": [
+            0.011205,
+            0.011571,
+            0.010021
+          ],
+          "process_median_ms": 0.011205,
+          "sample_max_error": 2.93e-06
+        },
+        {
+          "shape": [
+            512,
+            512,
+            512
+          ],
+          "round_ms": [
+            0.157434,
+            0.158314,
+            0.148691
+          ],
+          "process_median_ms": 0.157434,
+          "sample_max_error": 7.11e-06
+        },
+        {
+          "shape": [
+            2048,
+            2048,
+            2048
+          ],
+          "round_ms": [
+            8.811288,
+            8.859339,
+            8.871208
+          ],
+          "process_median_ms": 8.859339,
+          "sample_max_error": 3.19e-05
+        },
+        {
+          "shape": [
+            128,
+            1024,
+            512
+          ],
+          "round_ms": [
+            0.085854,
+            0.078397,
+            0.078328
+          ],
+          "process_median_ms": 0.078397,
+          "sample_max_error": 9.63e-06
+        },
+        {
+          "shape": [
+            127,
+            513,
+            257
+          ],
+          "round_ms": [
+            0.027571,
+            0.028051,
+            0.03508
+          ],
+          "process_median_ms": 0.028051,
+          "sample_max_error": 4.76e-06
+        }
+      ]
+    },
+    {
+      "pass": 2,
+      "variant": "naive32",
+      "records": [
+        {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "round_ms": [
+            0.008741,
+            0.010198,
+            0.008819
+          ],
+          "process_median_ms": 0.008819,
+          "sample_max_error": 2.93e-06
+        },
+        {
+          "shape": [
+            512,
+            512,
+            512
+          ],
+          "round_ms": [
+            0.157595,
+            0.165205,
+            0.160198
+          ],
+          "process_median_ms": 0.160198,
+          "sample_max_error": 7.11e-06
+        },
+        {
+          "shape": [
+            2048,
+            2048,
+            2048
+          ],
+          "round_ms": [
+            8.694798,
+            8.453688,
+            8.459078
+          ],
+          "process_median_ms": 8.459078,
+          "sample_max_error": 3.19e-05
+        },
+        {
+          "shape": [
+            128,
+            1024,
+            512
+          ],
+          "round_ms": [
+            0.0796,
+            0.079565,
+            0.077976
+          ],
+          "process_median_ms": 0.079565,
+          "sample_max_error": 9.63e-06
+        },
+        {
+          "shape": [
+            127,
+            513,
+            257
+          ],
+          "round_ms": [
+            0.027581,
+            0.029288,
+            0.030837
+          ],
+          "process_median_ms": 0.029288,
+          "sample_max_error": 4.76e-06
+        }
+      ]
+    },
+    {
+      "pass": 2,
+      "variant": "tile4",
+      "records": [
+        {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "round_ms": [
+            0.010333,
+            0.011659,
+            0.011656
+          ],
+          "process_median_ms": 0.011656,
+          "sample_max_error": 2.93e-06
+        },
+        {
+          "shape": [
+            512,
+            512,
+            512
+          ],
+          "round_ms": [
+            0.388614,
+            0.386734,
+            0.387666
+          ],
+          "process_median_ms": 0.387666,
+          "sample_max_error": 7.11e-06
+        },
+        {
+          "shape": [
+            2048,
+            2048,
+            2048
+          ],
+          "round_ms": [
+            24.778471,
+            24.678158,
+            24.667698
+          ],
+          "process_median_ms": 24.678158,
+          "sample_max_error": 3.19e-05
+        },
+        {
+          "shape": [
+            128,
+            1024,
+            512
+          ],
+          "round_ms": [
+            0.197842,
+            0.196509,
+            0.19611
+          ],
+          "process_median_ms": 0.196509,
+          "sample_max_error": 9.63e-06
+        },
+        {
+          "shape": [
+            127,
+            513,
+            257
+          ],
+          "round_ms": [
+            0.053806,
+            0.055339,
+            0.054944
+          ],
+          "process_median_ms": 0.054944,
+          "sample_max_error": 4.76e-06
+        }
+      ]
+    },
+    {
+      "pass": 2,
+      "variant": "tile8",
+      "records": [
+        {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "round_ms": [
+            0.009942,
+            0.012029,
+            0.007798
+          ],
+          "process_median_ms": 0.009942,
+          "sample_max_error": 2.93e-06
+        },
+        {
+          "shape": [
+            512,
+            512,
+            512
+          ],
+          "round_ms": [
+            0.129827,
+            0.129134,
+            0.129147
+          ],
+          "process_median_ms": 0.129147,
+          "sample_max_error": 7.11e-06
+        },
+        {
+          "shape": [
+            2048,
+            2048,
+            2048
+          ],
+          "round_ms": [
+            8.021946,
+            8.013211,
+            8.062399
+          ],
+          "process_median_ms": 8.021946,
+          "sample_max_error": 3.19e-05
+        },
+        {
+          "shape": [
+            128,
+            1024,
+            512
+          ],
+          "round_ms": [
+            0.068683,
+            0.068682,
+            0.06915
+          ],
+          "process_median_ms": 0.068683,
+          "sample_max_error": 9.63e-06
+        },
+        {
+          "shape": [
+            127,
+            513,
+            257
+          ],
+          "round_ms": [
+            0.020971,
+            0.020749,
+            0.022555
+          ],
+          "process_median_ms": 0.020971,
+          "sample_max_error": 4.76e-06
+        }
+      ]
+    },
+    {
+      "pass": 2,
+      "variant": "tile16",
+      "records": [
+        {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "round_ms": [
+            0.010622,
+            0.013286,
+            0.011709
+          ],
+          "process_median_ms": 0.011709,
+          "sample_max_error": 2.93e-06
+        },
+        {
+          "shape": [
+            512,
+            512,
+            512
+          ],
+          "round_ms": [
+            0.10276,
+            0.101626,
+            0.101194
+          ],
+          "process_median_ms": 0.101626,
+          "sample_max_error": 7.11e-06
+        },
+        {
+          "shape": [
+            2048,
+            2048,
+            2048
+          ],
+          "round_ms": [
+            6.103957,
+            6.092109,
+            6.062968
+          ],
+          "process_median_ms": 6.092109,
+          "sample_max_error": 3.19e-05
+        },
+        {
+          "shape": [
+            128,
+            1024,
+            512
+          ],
+          "round_ms": [
+            0.054458,
+            0.054262,
+            0.053984
+          ],
+          "process_median_ms": 0.054262,
+          "sample_max_error": 9.63e-06
+        },
+        {
+          "shape": [
+            127,
+            513,
+            257
+          ],
+          "round_ms": [
+            0.019,
+            0.018658,
+            0.018923
+          ],
+          "process_median_ms": 0.018923,
+          "sample_max_error": 4.76e-06
+        }
+      ]
+    },
+    {
+      "pass": 2,
+      "variant": "tile32",
+      "records": [
+        {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "round_ms": [
+            0.00731,
+            0.008403,
+            0.008229
+          ],
+          "process_median_ms": 0.008229,
+          "sample_max_error": 2.93e-06
+        },
+        {
+          "shape": [
+            512,
+            512,
+            512
+          ],
+          "round_ms": [
+            0.112754,
+            0.112824,
+            0.113274
+          ],
+          "process_median_ms": 0.112824,
+          "sample_max_error": 7.11e-06
+        },
+        {
+          "shape": [
+            2048,
+            2048,
+            2048
+          ],
+          "round_ms": [
+            6.477363,
+            6.477122,
+            6.382821
+          ],
+          "process_median_ms": 6.477122,
+          "sample_max_error": 3.19e-05
+        },
+        {
+          "shape": [
+            128,
+            1024,
+            512
+          ],
+          "round_ms": [
+            0.058483,
+            0.059286,
+            0.059406
+          ],
+          "process_median_ms": 0.059286,
+          "sample_max_error": 9.63e-06
+        },
+        {
+          "shape": [
+            127,
+            513,
+            257
+          ],
+          "round_ms": [
+            0.02428,
+            0.024501,
+            0.024003
+          ],
+          "process_median_ms": 0.02428,
+          "sample_max_error": 4.76e-06
+        }
+      ]
+    },
+    {
+      "pass": 3,
+      "variant": "tile8",
+      "records": [
+        {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "round_ms": [
+            0.018032,
+            0.027965,
+            0.02897
+          ],
+          "process_median_ms": 0.027965,
+          "sample_max_error": 2.93e-06
+        },
+        {
+          "shape": [
+            512,
+            512,
+            512
+          ],
+          "round_ms": [
+            0.130323,
+            0.130418,
+            0.130245
+          ],
+          "process_median_ms": 0.130323,
+          "sample_max_error": 7.11e-06
+        },
+        {
+          "shape": [
+            2048,
+            2048,
+            2048
+          ],
+          "round_ms": [
+            7.986529,
+            8.009752,
+            8.136779
+          ],
+          "process_median_ms": 8.009752,
+          "sample_max_error": 3.19e-05
+        },
+        {
+          "shape": [
+            128,
+            1024,
+            512
+          ],
+          "round_ms": [
+            0.068406,
+            0.06996,
+            0.069462
+          ],
+          "process_median_ms": 0.069462,
+          "sample_max_error": 9.63e-06
+        },
+        {
+          "shape": [
+            127,
+            513,
+            257
+          ],
+          "round_ms": [
+            0.021184,
+            0.020894,
+            0.021128
+          ],
+          "process_median_ms": 0.021128,
+          "sample_max_error": 4.76e-06
+        }
+      ]
+    },
+    {
+      "pass": 3,
+      "variant": "tile32",
+      "records": [
+        {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "round_ms": [
+            0.008278,
+            0.010627,
+            0.008198
+          ],
+          "process_median_ms": 0.008278,
+          "sample_max_error": 2.93e-06
+        },
+        {
+          "shape": [
+            512,
+            512,
+            512
+          ],
+          "round_ms": [
+            0.113165,
+            0.112966,
+            0.113368
+          ],
+          "process_median_ms": 0.113165,
+          "sample_max_error": 7.11e-06
+        },
+        {
+          "shape": [
+            2048,
+            2048,
+            2048
+          ],
+          "round_ms": [
+            7.097782,
+            6.523013,
+            6.380639
+          ],
+          "process_median_ms": 6.523013,
+          "sample_max_error": 3.19e-05
+        },
+        {
+          "shape": [
+            128,
+            1024,
+            512
+          ],
+          "round_ms": [
+            0.057918,
+            0.058651,
+            0.058136
+          ],
+          "process_median_ms": 0.058136,
+          "sample_max_error": 9.63e-06
+        },
+        {
+          "shape": [
+            127,
+            513,
+            257
+          ],
+          "round_ms": [
+            0.024323,
+            0.024482,
+            0.024578
+          ],
+          "process_median_ms": 0.024482,
+          "sample_max_error": 4.76e-06
+        }
+      ]
+    },
+    {
+      "pass": 3,
+      "variant": "tile4",
+      "records": [
+        {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "round_ms": [
+            0.010293,
+            0.010138,
+            0.009957
+          ],
+          "process_median_ms": 0.010138,
+          "sample_max_error": 2.93e-06
+        },
+        {
+          "shape": [
+            512,
+            512,
+            512
+          ],
+          "round_ms": [
+            0.387061,
+            0.387413,
+            0.387075
+          ],
+          "process_median_ms": 0.387075,
+          "sample_max_error": 7.11e-06
+        },
+        {
+          "shape": [
+            2048,
+            2048,
+            2048
+          ],
+          "round_ms": [
+            24.987364,
+            25.246078,
+            24.953176
+          ],
+          "process_median_ms": 24.987364,
+          "sample_max_error": 3.19e-05
+        },
+        {
+          "shape": [
+            128,
+            1024,
+            512
+          ],
+          "round_ms": [
+            0.196118,
+            0.195307,
+            0.195035
+          ],
+          "process_median_ms": 0.195307,
+          "sample_max_error": 9.63e-06
+        },
+        {
+          "shape": [
+            127,
+            513,
+            257
+          ],
+          "round_ms": [
+            0.053534,
+            0.053605,
+            0.053597
+          ],
+          "process_median_ms": 0.053597,
+          "sample_max_error": 4.76e-06
+        }
+      ]
+    },
+    {
+      "pass": 3,
+      "variant": "tile16",
+      "records": [
+        {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "round_ms": [
+            0.011114,
+            0.02156,
+            0.009318
+          ],
+          "process_median_ms": 0.011114,
+          "sample_max_error": 2.93e-06
+        },
+        {
+          "shape": [
+            512,
+            512,
+            512
+          ],
+          "round_ms": [
+            0.100789,
+            0.102965,
+            0.101382
+          ],
+          "process_median_ms": 0.101382,
+          "sample_max_error": 7.11e-06
+        },
+        {
+          "shape": [
+            2048,
+            2048,
+            2048
+          ],
+          "round_ms": [
+            6.742728,
+            6.473317,
+            6.419384
+          ],
+          "process_median_ms": 6.473317,
+          "sample_max_error": 3.19e-05
+        },
+        {
+          "shape": [
+            128,
+            1024,
+            512
+          ],
+          "round_ms": [
+            0.054477,
+            0.055045,
+            0.053251
+          ],
+          "process_median_ms": 0.054477,
+          "sample_max_error": 9.63e-06
+        },
+        {
+          "shape": [
+            127,
+            513,
+            257
+          ],
+          "round_ms": [
+            0.022034,
+            0.027376,
+            0.020546
+          ],
+          "process_median_ms": 0.022034,
+          "sample_max_error": 4.76e-06
+        }
+      ]
+    },
+    {
+      "pass": 3,
+      "variant": "naive32",
+      "records": [
+        {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "round_ms": [
+            0.014611,
+            0.01159,
+            0.011589
+          ],
+          "process_median_ms": 0.01159,
+          "sample_max_error": 2.93e-06
+        },
+        {
+          "shape": [
+            512,
+            512,
+            512
+          ],
+          "round_ms": [
+            0.165619,
+            0.16128,
+            0.15731
+          ],
+          "process_median_ms": 0.16128,
+          "sample_max_error": 7.11e-06
+        },
+        {
+          "shape": [
+            2048,
+            2048,
+            2048
+          ],
+          "round_ms": [
+            8.878698,
+            8.793348,
+            8.625789
+          ],
+          "process_median_ms": 8.793348,
+          "sample_max_error": 3.19e-05
+        },
+        {
+          "shape": [
+            128,
+            1024,
+            512
+          ],
+          "round_ms": [
+            0.077998,
+            0.078458,
+            0.078254
+          ],
+          "process_median_ms": 0.078254,
+          "sample_max_error": 9.63e-06
+        },
+        {
+          "shape": [
+            127,
+            513,
+            257
+          ],
+          "round_ms": [
+            0.027184,
+            0.027536,
+            0.02716
+          ],
+          "process_median_ms": 0.027184,
+          "sample_max_error": 4.76e-06
+        }
+      ]
+    }
+  ]
+}
+
+=== pass1_naive32.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, naive block side=32; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.011205    0.011571    0.010021    0.011205     374.3         2.93e-06
+  512   512   512    0.157434    0.158314    0.148691    0.157434    1705.1         7.11e-06
+ 2048  2048  2048    8.811288    8.859339    8.871208    8.859339    1939.2         3.19e-05
+  128  1024   512    0.085854    0.078397    0.078328    0.078397    1712.0         9.63e-06
+  127   513   257    0.027571    0.028051    0.035080    0.028051    1193.8         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== pass1_tile16.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=16; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.007922    0.007760    0.010470    0.007922     529.5         2.93e-06
+  512   512   512    0.101523    0.101472    0.102914    0.101523    2644.1         7.11e-06
+ 2048  2048  2048    6.159623    6.119298    6.073200    6.119298    2807.5         3.19e-05
+  128  1024   512    0.053682    0.053998    0.055010    0.053998    2485.6         9.63e-06
+  127   513   257    0.020099    0.018619    0.018523    0.018619    1798.6         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== pass1_tile32.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=32; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.009917    0.011702    0.014358    0.011702     358.4         2.93e-06
+  512   512   512    0.125342    0.135165    0.112574    0.125342    2141.6         7.11e-06
+ 2048  2048  2048    6.542491    6.486550    6.468707    6.486550    2648.5         3.19e-05
+  128  1024   512    0.069117    0.057738    0.057776    0.057776    2323.1         9.63e-06
+  127   513   257    0.024858    0.023811    0.023426    0.023811    1406.4         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== pass1_tile4.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=4; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.015995    0.017864    0.019715    0.017864     234.8         2.93e-06
+  512   512   512    0.388546    0.387845    0.387488    0.387845     692.1         7.11e-06
+ 2048  2048  2048   26.611149   25.765268   25.284025   25.765268     666.8         3.19e-05
+  128  1024   512    0.196410    0.195066    0.195298    0.195298     687.2         9.63e-06
+  127   513   257    0.053616    0.054438    0.053731    0.053731     623.2         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== pass1_tile8.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=8; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.013274    0.011136    0.011259    0.011259     372.5         2.93e-06
+  512   512   512    0.130835    0.129848    0.129581    0.129848    2067.3         7.11e-06
+ 2048  2048  2048    8.089842    8.079655    8.093111    8.089842    2123.6         3.19e-05
+  128  1024   512    0.078571    0.068013    0.068074    0.068074    1971.7         9.63e-06
+  127   513   257    0.020875    0.021347    0.020699    0.020875    1604.2         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== pass2_naive32.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, naive block side=32; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.008741    0.010198    0.008819    0.008819     475.6         2.93e-06
+  512   512   512    0.157595    0.165205    0.160198    0.160198    1675.6         7.11e-06
+ 2048  2048  2048    8.694798    8.453688    8.459078    8.459078    2030.9         3.19e-05
+  128  1024   512    0.079600    0.079565    0.077976    0.079565    1686.9         9.63e-06
+  127   513   257    0.027581    0.029288    0.030837    0.029288    1143.4         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== pass2_tile16.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=16; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.010622    0.013286    0.011709    0.011709     358.2         2.93e-06
+  512   512   512    0.102760    0.101626    0.101194    0.101626    2641.4         7.11e-06
+ 2048  2048  2048    6.103957    6.092109    6.062968    6.092109    2820.0         3.19e-05
+  128  1024   512    0.054458    0.054262    0.053984    0.054262    2473.5         9.63e-06
+  127   513   257    0.019000    0.018658    0.018923    0.018923    1769.7         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== pass2_tile32.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=32; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.007310    0.008403    0.008229    0.008229     509.7         2.93e-06
+  512   512   512    0.112754    0.112824    0.113274    0.112824    2379.2         7.11e-06
+ 2048  2048  2048    6.477363    6.477122    6.382821    6.477122    2652.4         3.19e-05
+  128  1024   512    0.058483    0.059286    0.059406    0.059286    2263.9         9.63e-06
+  127   513   257    0.024280    0.024501    0.024003    0.024280    1379.2         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== pass2_tile4.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=4; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.010333    0.011659    0.011656    0.011656     359.8         2.93e-06
+  512   512   512    0.388614    0.386734    0.387666    0.387666     692.4         7.11e-06
+ 2048  2048  2048   24.778471   24.678158   24.667698   24.678158     696.2         3.19e-05
+  128  1024   512    0.197842    0.196509    0.196110    0.196509     683.0         9.63e-06
+  127   513   257    0.053806    0.055339    0.054944    0.054944     609.5         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== pass2_tile8.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=8; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.009942    0.012029    0.007798    0.009942     421.9         2.93e-06
+  512   512   512    0.129827    0.129134    0.129147    0.129147    2078.5         7.11e-06
+ 2048  2048  2048    8.021946    8.013211    8.062399    8.021946    2141.6         3.19e-05
+  128  1024   512    0.068683    0.068682    0.069150    0.068683    1954.2         9.63e-06
+  127   513   257    0.020971    0.020749    0.022555    0.020971    1596.8         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== pass3_naive32.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, naive block side=32; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.014611    0.011590    0.011589    0.011590     361.9         2.93e-06
+  512   512   512    0.165619    0.161280    0.157310    0.161280    1664.4         7.11e-06
+ 2048  2048  2048    8.878698    8.793348    8.625789    8.793348    1953.7         3.19e-05
+  128  1024   512    0.077998    0.078458    0.078254    0.078254    1715.1         9.63e-06
+  127   513   257    0.027184    0.027536    0.027160    0.027184    1231.9         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== pass3_tile16.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=16; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.011114    0.021560    0.009318    0.011114     377.4         2.93e-06
+  512   512   512    0.100789    0.102965    0.101382    0.101382    2647.8         7.11e-06
+ 2048  2048  2048    6.742728    6.473317    6.419384    6.473317    2654.0         3.19e-05
+  128  1024   512    0.054477    0.055045    0.053251    0.054477    2463.8         9.63e-06
+  127   513   257    0.022034    0.027376    0.020546    0.022034    1519.8         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== pass3_tile32.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=32; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.008278    0.010627    0.008198    0.008278     506.7         2.93e-06
+  512   512   512    0.113165    0.112966    0.113368    0.113165    2372.1         7.11e-06
+ 2048  2048  2048    7.097782    6.523013    6.380639    6.523013    2633.7         3.19e-05
+  128  1024   512    0.057918    0.058651    0.058136    0.058136    2308.7         9.63e-06
+  127   513   257    0.024323    0.024482    0.024578    0.024482    1367.9         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== pass3_tile4.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=4; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.010293    0.010138    0.009957    0.010138     413.7         2.93e-06
+  512   512   512    0.387061    0.387413    0.387075    0.387075     693.5         7.11e-06
+ 2048  2048  2048   24.987364   25.246078   24.953176   24.987364     687.5         3.19e-05
+  128  1024   512    0.196118    0.195307    0.195035    0.195307     687.2         9.63e-06
+  127   513   257    0.053534    0.053605    0.053597    0.053597     624.8         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== pass3_tile8.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=8; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.018032    0.027965    0.028970    0.027965     150.0         2.93e-06
+  512   512   512    0.130323    0.130418    0.130245    0.130323    2059.8         7.11e-06
+ 2048  2048  2048    7.986529    8.009752    8.136779    8.009752    2144.9         3.19e-05
+  128  1024   512    0.068406    0.069960    0.069462    0.069462    1932.2         9.63e-06
+  127   513   257    0.021184    0.020894    0.021128    0.021128    1585.0         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.

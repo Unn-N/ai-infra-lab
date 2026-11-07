@@ -1,0 +1,80 @@
+=== gemm_tile_device_limits_2026-11-07.txt ===
+GPU=NVIDIA GeForce RTX 5070 maxThreadsPerBlock=1024 maxThreadsDim=(1024,1024,64) sharedMemPerBlock=49152
+
+=== gemm_tile32_comparison_2026-11-07.txt ===
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=32; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.084645    0.083418    0.106094    0.084645      49.6         2.93e-06
+  512   512   512    0.122190    0.122582    0.121842    0.122190    2196.9         7.11e-06
+ 2048  2048  2048    6.864834    6.601009    6.604706    6.604706    2601.2         3.19e-05
+  128  1024   512    0.057870    0.068501    0.057755    0.057870    2319.3         9.63e-06
+  127   513   257    0.024317    0.025085    0.024075    0.024317    1377.1         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== gemm_tile16_comparison_2026-11-07.txt ===
+TILE=16, process_exit_code=0
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=16; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.008805    0.007434    0.007118    0.007434     564.2         2.93e-06
+  512   512   512    0.100584    0.102125    0.102306    0.102125    2628.5         7.11e-06
+ 2048  2048  2048    6.330106    6.344840    6.422522    6.344840    2707.7         3.19e-05
+  128  1024   512    0.053787    0.053837    0.054842    0.053837    2493.0         9.63e-06
+  127   513   257    0.019014    0.018896    0.020130    0.019014    1761.2         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== gemm_tile64_comparison_2026-11-07.txt ===
+TILE=64, process_exit_code=1
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=64; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+CUDA error: invalid argument (gemm/gemm_self_bench.cu:95)
+
+=== gemm_tile16_repeat_2026-11-07.txt ===
+TILE=16, process_exit_code=0
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=16; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.020845    0.014472    0.014787    0.014787     283.6         2.93e-06
+  512   512   512    0.100555    0.101123    0.100906    0.100906    2660.3         7.11e-06
+ 2048  2048  2048    6.182616    6.233275    6.270878    6.233275    2756.2         3.19e-05
+  128  1024   512    0.054958    0.055342    0.054755    0.054958    2442.2         9.63e-06
+  127   513   257    0.018611    0.018645    0.018413    0.018611    1799.3         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.
+
+=== gemm_tile32_repeat_2026-11-07.txt ===
+TILE=32, process_exit_code=0
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, TILE=32; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.013634    0.011406    0.009794    0.011406     367.7         2.93e-06
+  512   512   512    0.113046    0.112925    0.112882    0.112925    2377.1         7.11e-06
+ 2048  2048  2048    6.579194    6.597781    6.573914    6.579194    2611.2         3.19e-05
+  128  1024   512    0.059413    0.059238    0.058944    0.059238    2265.7         9.63e-06
+  127   513   257    0.023907    0.023749    0.024277    0.023907    1400.7         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.

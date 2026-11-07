@@ -24,3 +24,6 @@ softmax_v2_self
 # ---- 编辑器 ----
 .vscode/
 *.swp
+
+# 学习时在源码目录手动生成的可执行文件；正式编译仍输出到 build/
+/gemm/gemm_self
