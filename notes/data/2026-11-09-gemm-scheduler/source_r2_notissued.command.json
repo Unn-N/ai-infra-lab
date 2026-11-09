@@ -1,0 +1,12 @@
+[
+  "/usr/local/cuda/bin/ncu",
+  "--import",
+  "/home/unn/ai-infra-lab/build/scheduler_2026-11-09/source_r2.ncu-rep",
+  "--page",
+  "source",
+  "--print-source",
+  "cuda,sass",
+  "--csv",
+  "--metrics",
+  "smsp__pcsamp_warps_issue_stalled_barrier_not_issued,smsp__pcsamp_warps_issue_stalled_branch_resolving_not_issued,smsp__pcsamp_warps_issue_stalled_dispatch_stall_not_issued,smsp__pcsamp_warps_issue_stalled_drain_not_issued,smsp__pcsamp_warps_issue_stalled_lg_throttle_not_issued,smsp__pcsamp_warps_issue_stalled_long_scoreboard_not_issued,smsp__pcsamp_warps_issue_stalled_math_pipe_throttle_not_issued,smsp__pcsamp_warps_issue_stalled_membar_not_issued,smsp__pcsamp_warps_issue_stalled_mio_throttle_not_issued,smsp__pcsamp_warps_issue_stalled_misc_not_issued,smsp__pcsamp_warps_issue_stalled_no_instructions_not_issued,smsp__pcsamp_warps_issue_stalled_not_selected_not_issued,smsp__pcsamp_warps_issue_stalled_selected_not_issued,smsp__pcsamp_warps_issue_stalled_short_scoreboard_not_issued,smsp__pcsamp_warps_issue_stalled_sleeping_not_issued,smsp__pcsamp_warps_issue_stalled_tex_throttle_not_issued,smsp__pcsamp_warps_issue_stalled_wait_not_issued"
+]

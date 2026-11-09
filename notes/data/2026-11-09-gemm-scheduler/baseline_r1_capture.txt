@@ -1,0 +1,84 @@
+==WARNING== Note: Running with uncontrolled GPU caches. Profiling results may be inconsistent.
+==WARNING== Note: Running with unmodified GPU clocks. If not controlled otherwise, profiling results may be inconsistent.
+==PROF== Connected to process 563 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 1
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 563
+==PROF== Connected to process 576 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 2
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 576
+==PROF== Connected to process 589 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 3
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 589
+==PROF== Connected to process 602 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 4
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 602
+==PROF== Connected to process 615 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 5
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 615
+==PROF== Connected to process 628 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 6
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 628
+==PROF== Connected to process 641 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 7
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 641
+==PROF== Connected to process 656 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 8
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 656
+==PROF== Connected to process 669 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 9
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 669
+==PROF== Connected to process 682 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 10
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 682
+==PROF== Connected to process 695 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 11
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 695
+==PROF== Connected to process 708 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 12
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 708
+==PROF== Connected to process 721 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 13
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 721
+==PROF== Connected to process 734 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 14
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 734
+==PROF== Connected to process 747 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 15
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 747
+==PROF== Connected to process 760 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 16
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 760
+==PROF== Connected to process 773 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 17
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 773
+==PROF== Connected to process 786 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 18
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 786
+==PROF== Connected to process 804 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 19
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 804
+==PROF== Connected to process 817 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 20
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 817
+==PROF== Creating report from application replay data: 0%..................100%
+==PROF== Report: /home/unn/ai-infra-lab/build/scheduler_2026-11-09/baseline_r1.ncu-rep

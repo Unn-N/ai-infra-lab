@@ -1,0 +1,24 @@
+{
+  "baseline": {
+    "sha256": "e0746da45b8a956068ca57632600a1b1c7ac4a3499ee2e2dc0b35218d20f5788",
+    "output_tile": 64,
+    "K_tile": 32,
+    "thread_tile": 4,
+    "block_threads": 256,
+    "A_shared_shape": [
+      64,
+      32
+    ]
+  },
+  "transA": {
+    "sha256": "8a1cdb9617227d1b81f858df4f90607b0ec4657fc663f2cab84383207309be14",
+    "output_tile": 64,
+    "K_tile": 32,
+    "thread_tile": 4,
+    "block_threads": 256,
+    "A_shared_shape": [
+      32,
+      68
+    ]
+  }
+}

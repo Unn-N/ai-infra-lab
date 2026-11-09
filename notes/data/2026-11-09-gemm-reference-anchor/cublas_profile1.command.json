@@ -1,0 +1,10 @@
+[
+  "/usr/local/cuda/bin/ncu",
+  "--import",
+  "/home/unn/ai-infra-lab/build/reference_anchor_2026-11-09/cublas_profile1.ncu-rep",
+  "--page",
+  "raw",
+  "--csv",
+  "--print-units",
+  "base"
+]

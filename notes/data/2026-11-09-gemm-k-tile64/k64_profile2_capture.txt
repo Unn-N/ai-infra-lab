@@ -1,0 +1,16 @@
+==WARNING== Note: Running with uncontrolled GPU caches. Profiling results may be inconsistent.
+==WARNING== Note: Running with unmodified GPU clocks. If not controlled otherwise, profiling results may be inconsistent.
+==PROF== Connected to process 750 (/home/unn/ai-infra-lab/build/transpose_a_k64_2026-11-09/k64/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 1
+Profile target M=2048 N=2048 K=2048, config=64/64/4, C[0]=-23.8147
+==PROF== Disconnected from process 750
+==PROF== Connected to process 763 (/home/unn/ai-infra-lab/build/transpose_a_k64_2026-11-09/k64/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 2
+Profile target M=2048 N=2048 K=2048, config=64/64/4, C[0]=-23.8147
+==PROF== Disconnected from process 763
+==PROF== Connected to process 778 (/home/unn/ai-infra-lab/build/transpose_a_k64_2026-11-09/k64/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 3
+Profile target M=2048 N=2048 K=2048, config=64/64/4, C[0]=-23.8147
+==PROF== Disconnected from process 778
+==PROF== Creating report from application replay data: 0%.....100%
+==PROF== Report: /home/unn/ai-infra-lab/build/transpose_a_k64_2026-11-09/k64_profile2.ncu-rep

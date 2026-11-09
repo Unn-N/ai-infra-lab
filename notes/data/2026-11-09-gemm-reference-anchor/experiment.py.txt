@@ -1,0 +1,259 @@
+from pathlib import Path
+import subprocess, json, csv, io, shutil, statistics, sys, hashlib
+
+repo=Path('/home/unn/ai-infra-lab')
+root=repo/'build/reference_anchor_2026-11-09'
+nvcc='/usr/local/cuda/bin/nvcc'
+names=['self','cublas']
+
+def run(cmd,path):
+    path.with_suffix('.command.json').write_text(json.dumps(cmd,indent=2))
+    r=subprocess.run(cmd,capture_output=True,text=True)
+    path.write_text(r.stdout+r.stderr)
+    if r.returncode:
+        print(r.stdout+r.stderr,flush=True)
+        raise RuntimeError(cmd)
+    return r.stdout
+
+phase=sys.argv[1]
+if phase=='prepare':
+    root.mkdir(exist_ok=False)
+    source=(repo/'gemm/gemm_self_bench.cu').read_text()
+    source=source.replace('#define GEMM_SELF_SOURCE "gemm_self_re.cu"','#define GEMM_SELF_SOURCE "gemm_self_transpose_a.cu"')
+    helpers='''// [Codex参考测量] 只组织cuBLAS参考与计时，学习kernel不变。
+// nvcc -O3 -lineinfo -arch=sm_120 gemm/gemm_reference_bench.cu -lcublas -o build/gemm_reference_bench
+// REFERENCE_CUBLAS=1测严格FP32 cuBLAS；=0测相同入口下的A局部转置学习版。
+#ifndef REFERENCE_CUBLAS
+#define REFERENCE_CUBLAS 1
+#endif
+static void check_cublas(cublasStatus_t status) {
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        std::fprintf(stderr, "cuBLAS error: %d\\n", int(status));
+        std::exit(EXIT_FAILURE);
+    }
+}
+static void launch_reference(cublasHandle_t handle, const float* A, const float* B,
+                             float* C, int M, int N, int K) {
+    const float alpha=1.0f, beta=0.0f;
+    // cuBLAS按列存储解释内存。把row-major C=AB写成column-major C^T=B^T A^T，
+    // 交换A/B及M/N，不增加物理转置。pedantic计算模式明确使用FP32，禁用Tensor Core。
+    check_cublas(cublasGemmEx(handle,CUBLAS_OP_N,CUBLAS_OP_N,N,M,K,
+        &alpha,B,CUDA_R_32F,N,A,CUDA_R_32F,K,&beta,C,CUDA_R_32F,N,
+        CUBLAS_COMPUTE_32F_PEDANTIC,CUBLAS_GEMM_DEFAULT));
+}
+'''
+    source=source.replace('int main() {',helpers+'\n#ifndef GEMM_REFERENCE_NO_MAIN\nint main() {',1)
+    source=source.replace('constexpr int warmup = 5;','constexpr int warmup = 20;').replace('constexpr int repeats = 20;','constexpr int repeats = 100;')
+    anchor='    cudaEvent_t start, stop;'
+    setup='''    cublasHandle_t handle{};
+    check_cublas(cublasCreate(&handle));
+    check_cublas(cublasSetMathMode(handle,CUBLAS_PEDANTIC_MATH));
+    int library_version=0;
+    check_cublas(cublasGetVersion(handle,&library_version));
+    std::printf("Reference backend=%s, cuBLAS=%d, compute=32F_PEDANTIC, math=PEDANTIC\\n",
+                REFERENCE_CUBLAS ? "cuBLAS" : "self_A_transpose_K32", library_version);
+
+'''
+    assert source.count(anchor)==1
+    source=source.replace(anchor,setup+anchor)
+    launch='        auto launch = [&]() { gemm_tiled<<<grid, block>>>(dA, dB, dC, M, N, K); };'
+    assert source.count(launch)==1
+    source=source.replace(launch,'''        auto launch = [&]() {
+#if REFERENCE_CUBLAS
+            launch_reference(handle,dA,dB,dC,M,N,K);
+#else
+            gemm_tiled<<<grid, block>>>(dA,dB,dC,M,N,K);
+#endif
+        };''')
+    source=source.replace('    CUDA_CHECK(cudaEventDestroy(start));','    check_cublas(cublasDestroy(handle));\n    CUDA_CHECK(cudaEventDestroy(start));')
+    source+='\n#endif // GEMM_REFERENCE_NO_MAIN\n'
+    (root/'gemm_reference_bench.cu').write_text(source)
+    shutil.copyfile(repo/'gemm/gemm_self_transpose_a.cu',root/'gemm_self_transpose_a.cu')
+    check=(repo/'gemm/gemm_self_check.cu').read_text()
+    start=check.index('#define GEMM_SELF_BENCH')
+    end=check.index('#include <vector>')
+    check=check[:start]+'#define GEMM_REFERENCE_NO_MAIN\n#include "gemm_reference_bench.cu"\n'+check[end:]
+    check=check.replace('int main() {','''int main() {
+    cublasHandle_t handle{};
+    check_cublas(cublasCreate(&handle));
+    check_cublas(cublasSetMathMode(handle,CUBLAS_PEDANTIC_MATH));''',1)
+    call='        run_gemm(a.data(), b.data(), c.data(), M, N, K);'
+    assert check.count(call)==1
+    check=check.replace(call,'''        float *da=nullptr,*db=nullptr,*dc=nullptr;
+        CUDA_CHECK(cudaMalloc(&da,a.size()*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&db,b.size()*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&dc,c.size()*sizeof(float)));
+        CUDA_CHECK(cudaMemcpy(da,a.data(),a.size()*sizeof(float),cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(db,b.data(),b.size()*sizeof(float),cudaMemcpyHostToDevice));
+        launch_reference(handle,da,db,dc,M,N,K);
+        CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaMemcpy(c.data(),dc,c.size()*sizeof(float),cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaFree(da)); CUDA_CHECK(cudaFree(db)); CUDA_CHECK(cudaFree(dc));''')
+    check=check.replace('    return 0;','    check_cublas(cublasDestroy(handle));\n    return 0;')
+    (root/'reference_check.cu').write_text(check)
+    for name,flag in [('self','0'),('cublas','1')]:
+        run([nvcc,'-O3','-lineinfo','-arch=sm_120',f'-DREFERENCE_CUBLAS={flag}',str(root/'gemm_reference_bench.cu'),'-lcublas','-o',str(root/name)],root/f'{name}_compile.txt')
+        print('Compiled',name,flush=True)
+    run([nvcc,'-O3','-lineinfo','-arch=sm_120',str(root/'reference_check.cu'),'-lcublas','-o',str(root/'reference_check')],root/'check_compile.txt')
+    print(run([str(root/'reference_check')],root/'reference_check.txt'),flush=True)
+elif phase=='measure':
+    runs=[]
+    repeats={name:0 for name in names}
+    for name in ['self','cublas','cublas','self','self','cublas']:
+        repeats[name]+=1
+        output=run([str(root/name)],root/f'{name}_run{repeats[name]}.txt')
+        rows=[]
+        for line in output.splitlines():
+            parts=line.split()
+            if len(parts)==9 and all(x.isdigit() for x in parts[:3]):
+                rows.append({'shape':list(map(int,parts[:3])),'rounds_ms':list(map(float,parts[3:6])),'median_ms':float(parts[6])})
+        assert len(rows)==5,output
+        result={'variant':name,'repeat':repeats[name],'rows':rows}
+        runs.append(result)
+        print(result,flush=True)
+    summary=[]
+    for i in range(5):
+        entry={'shape':runs[0]['rows'][i]['shape']}
+        for name in names:
+            matches=[r['rows'][i] for r in runs if r['variant']==name]
+            values=[v for r in matches for v in r['rounds_ms']]
+            entry[name]={'median_ms':statistics.median(values),'all_round_ms':values,'process_medians':[r['median_ms'] for r in matches]}
+        entry['cublas_speedup']=entry['self']['median_ms']/entry['cublas']['median_ms']
+        summary.append(entry)
+    (root/'runs.json').write_text(json.dumps(runs,indent=2))
+    (root/'summary.json').write_text(json.dumps(summary,indent=2))
+    print(json.dumps(summary,indent=2),flush=True)
+elif phase=='profile':
+    profile=(repo/'build/transpose_a_2026-11-09/transA/profile.cu').read_text()
+    profile=profile.replace('#define GEMM_SELF_BENCH\n#include "gemm_self_re.cu"','#define GEMM_REFERENCE_NO_MAIN\n#include "gemm_reference_bench.cu"\n#include <cuda_profiler_api.h>')
+    anchor='    // Six unprofiled calls match validation + five warmups; collect only call seven.'
+    setup='''    cublasHandle_t handle{};
+    check_cublas(cublasCreate(&handle));
+    check_cublas(cublasSetMathMode(handle,CUBLAS_PEDANTIC_MATH));
+'''
+    assert profile.count(anchor)==1
+    profile=profile.replace(anchor,setup+anchor)
+    launch='        gemm_tiled<<<grid,block>>>(da,db,dc,M,N,K);'
+    assert profile.count(launch)==1
+    profile=profile.replace(launch,'''        if (i==6) CUDA_CHECK(cudaProfilerStart());
+#if REFERENCE_CUBLAS
+        launch_reference(handle,da,db,dc,M,N,K);
+#else
+        gemm_tiled<<<grid,block>>>(da,db,dc,M,N,K);
+#endif''')
+    profile=profile.replace('    float first=0;','    CUDA_CHECK(cudaProfilerStop());\n    check_cublas(cublasDestroy(handle));\n    float first=0;')
+    (root/'profile.cu').write_text(profile)
+    metrics=['gpu__time_duration.sum','smsp__inst_executed.sum','smsp__issue_active.avg.pct_of_peak_sustained_active','sm__inst_executed_pipe_fma.avg.pct_of_peak_sustained_elapsed','sm__inst_executed_pipe_lsu.avg.pct_of_peak_sustained_elapsed','sm__cycles_elapsed.avg.per_second']
+    profiles=[]
+    for name,flag in [('self','0'),('cublas','1')]:
+        run([nvcc,'-O3','-lineinfo','-arch=sm_120',f'-DREFERENCE_CUBLAS={flag}',str(root/'profile.cu'),'-lcublas','-o',str(root/f'{name}_profile')],root/f'{name}_profile_compile.txt')
+    for repeat,order in enumerate([names,list(reversed(names))],1):
+        for name in order:
+            tag=f'{name}_profile{repeat}'
+            cmd=['/usr/local/cuda/bin/ncu','--profile-from-start','off','--replay-mode','application','--cache-control','none','--clock-control','none','--metrics',','.join(metrics),'--export',str(root/tag),'--force-overwrite',str(root/f'{name}_profile'),'2048','2048','2048']
+            run(cmd,root/f'{tag}_capture.txt')
+            output=run(['/usr/local/cuda/bin/ncu','--import',str(root/f'{tag}.ncu-rep'),'--page','raw','--csv','--print-units','base'],root/f'{tag}.csv')
+            rows=[r for r in csv.DictReader(io.StringIO(output)) if r.get('ID','').isdigit()]
+            entry={'variant':name,'repeat':repeat,'kernels':[]}
+            for row in rows:
+                entry['kernels'].append({'name':row['Kernel Name'],**{key:float(row[key].replace(',','')) for key in metrics}})
+            profiles.append(entry)
+            print(json.dumps(entry,indent=2),flush=True)
+    (root/'profile_summary.json').write_text(json.dumps(profiles,indent=2))
+elif phase=='record':
+    summary=json.loads((root/'summary.json').read_text())
+    profiles=json.loads((root/'profile_summary.json').read_text())
+    assert len(profiles)==4 and all(len(p['kernels'])==1 for p in profiles)
+    assert (root/'gemm_self_transpose_a.cu').read_bytes()==(repo/'gemm/gemm_self_transpose_a.cu').read_bytes()
+    target=repo/'gemm/gemm_reference_bench.cu'
+    assert not target.exists()
+    shutil.copyfile(root/'gemm_reference_bench.cu',target)
+    peak=6144*2.51e9*2
+    flops=2*2048**3
+    large=summary[2]
+    theory={'nominal_CUDA_cores':6144,'nominal_boost_GHz':2.51,'nominal_FP32_FMA_TFLOPs':peak/1e12,'gemm_2048_FLOPs':flops,'nominal_ideal_compute_ms':flops/peak*1e3,'self_TFLOPs':flops/(large['self']['median_ms']*1e-3)/1e12,'cublas_TFLOPs':flops/(large['cublas']['median_ms']*1e-3)/1e12,'warning':'Nominal-clock arithmetic reference, not a hard runtime guarantee or a proven achievable minimum. Actual clocks differ across workloads.'}
+    (root/'theory.json').write_text(json.dumps(theory,indent=2))
+    table='| M,N,K | 学习版 A转置K32 ms | cuBLAS严格FP32 ms | cuBLAS加速比 |\n|---|---:|---:|---:|\n'
+    for row in summary:
+        table+='| '+', '.join(map(str,row['shape']))+f" | {row['self']['median_ms']:.6f} | {row['cublas']['median_ms']:.6f} | {row['cublas_speedup']:.3f}× |\n"
+    profile_table='| 指标 | 学习版 | cuBLAS严格FP32 |\n|---|---:|---:|\n'
+    for label,key,scale,digits in [('动态warp指令总数','smsp__inst_executed.sum',1,0),('调度器发射活跃，active周期 %','smsp__issue_active.avg.pct_of_peak_sustained_active',1,2),('FMA指令吞吐，elapsed %','sm__inst_executed_pipe_fma.avg.pct_of_peak_sustained_elapsed',1,2),('采集时SM时钟GHz','sm__cycles_elapsed.avg.per_second',1e-9,3)]:
+        spans=[]
+        for name in names:
+            values=[p['kernels'][0][key]*scale for p in profiles if p['variant']==name]
+            spans.append(f'{min(values):,.{digits}f}—{max(values):,.{digits}f}')
+        profile_table+='| '+label+' | '+' | '.join(spans)+' |\n'
+    note='''# 27 · 建立理想计算尺度与严格FP32 cuBLAS参照
+
+2026-11-09晚间。用户指出缺少整体瓶颈与理论上限，感觉参数实验方向不清。Codex补充两个参照：标称FP32乘加峰值对应的理想计算时间，以及同条件严格FP32 cuBLAS的实测性能。本轮不修改学习kernel。
+
+## 测量对象与精度
+
+学习版使用最新A局部转置K32版本gemm_self_transpose_a.cu，SHA256=8a1cdb9617227d1b81f858df4f90607b0ec4657fc663f2cab84383207309be14。参考调用cublasGemmEx，A/B/C与compute均为FP32，computeType=CUBLAS_COMPUTE_32F_PEDANTIC，mathMode=CUBLAS_PEDANTIC_MATH；alpha=1、beta=0。pedantic模式禁用Tensor Core，避免使用TF32等不同精度路径来比较当前SIMT学习版。
+
+按列存储接口使用C^T=B^T A^T解释row-major数组，调用中交换B/A与N/M，无额外物理转置。独立七组逐输出CPU double检查通过，包含非方阵以验证维度和leading dimension映射。所有普通计时的64点CPU double抽查通过。参考库检查不意味着穷尽全部输入。
+
+新增gemm/gemm_reference_bench.cu把库调用与测量放在辅助入口中，保留学习源码简单。默认REFERENCE_CUBLAS=1测库，编译-DREFERENCE_CUBLAS=0测相同入口下的学习版，均链接-lcublas。cuBLAS创建、设置、销毁及分配/拷贝/校验均不计时。实际库版本见原始运行日志。
+
+## 同期普通计时
+
+相同五形状和随机输入序列，20次预热，每进程3轮、每轮100次调用；每版三进程按self/cublas/cublas/self/self/cublas交错，取九轮批量平均耗时中位数。CUDA events、默认stream、缓冲复用、不清L2。此处20/100不同于此前5/20的参数实验，所有比较均以本轮同期对照为准。
+
+'''+table+f'''
+2048学习版{large['self']['median_ms']:.6f}ms、cuBLAS {large['cublas']['median_ms']:.6f}ms，实测库参照约快{large['cublas_speedup']:.3f}倍。三次进程中位数分别为学习版1.437268/1.440502/1.460316ms，库0.798124/0.811780/0.836409ms。本轮范围分离。
+
+短任务的cuBLAS进程与轮次波动很大，例如128的进程中位数0.068804→0.032658→0.013934ms，包含库API派发和WDDM等运行环境因素，尚未分离。它们不作为谁普遍更快的证据。cuBLAS实测是可达到的外部参考，不是数学上限，也未做库算法或Lt参数搜索。
+
+## 标称理想计算尺度
+
+NVIDIA产品页列出RTX5070为6144 CUDA核心、标称boost 2.51GHz。按每核心每周期一次FP32乘加、每乘加2FLOP估算，标称峰值为6144×2.51GHz×2={peak/1e12:.5f}TFLOP/s。
+
+2048方阵的通常GEMM计数为2×2048×2048×2048={flops:,}FLOP，约17.18GFLOP。若这些计算始终按上述峰值执行，纯计算时间尺度为{flops/peak*1e3:.6f}ms，约0.56ms。
+
+这只是标称频率下的理想算术参考：没有计入加载、地址/控制、同步和调度成本；真实GPU可能在高于或低于标称boost的频率运行。因此它不是不可突破的物理严格下界，也不是承诺当前代码能达到的耗时。没有使用Tensor/AI TOPS作为当前FP32标尺。
+
+重复缓冲区输入可能命中缓存，本次不以A+B+C共48MiB除以DRAM峰值的数值当作热缓存测量的必需DRAM时间。
+
+## 指令与管线对照
+
+为确认库路径和结构差异，另编译独立2048 profile入口，先运行六次、再用cudaProfilerStart/Stop只采第七次完整GEMM调用。每次调用在报告中均只有一个kernel；库名称为Kernel2<cutlass_80_simt_sgemm_256x128_8x4_nn_align1>，与SIMT参考设置相符。Nsight Compute application replay、cache-control none、clock-control none，正反顺序各一次。
+
+'''+profile_table+'''
+此处profiling沿用六次先行调用，与普通计时的21次先行调用（校验+20次预热）不同；GPU频率未锁定，采集时学习版约2.19—2.20GHz、库约2.77—2.78GHz。不能用profiling耗时比替代上方普通计时，也不能将全部加速唯一归因为指令数。
+
+仍可得到较强的结构线索：同一2048乘法，学习版约5.33亿warp指令，库约3.04亿；学习版约为其1.75倍。二者发射活跃都在约77%—79%，但库FMA吞吐更高。减少辅助指令、让更多发射用于有效乘加，成为有外部对照支撑的方向；仍未证明唯一主瓶颈。两种kernel的具体分块、地址计算、循环和访存方式不同，不将全部差异称为可无代价消除的冗余。
+
+## 用户提出的后续两项，尚未执行
+
+1. 将固定block边长和线程步长以编译期常量表达，先单独观察搬运循环是否简化。
+2. 再在通过验证的版本上做global→shared float4搬运：A可沿原global行一次读四个float，再拆分写入Ats[k+j][r]；B可连续读并尝试连续写。必须检查16B起点对齐与四元素有效性，非整齐K/N和边界用安全标量路径，保留现有输入支持。用SASS/动态指令确认宽加载是否出现，不能把显式float4当作自动加速保证。
+
+两项都指向搬运辅助指令成本。float4不减少有效搬运字节数，主要假设是降低加载/地址/控制等指令开销。此处只记录方案，不修改或测试这两项优化。
+
+## 文件与复现
+
+notes/data/2026-11-09-gemm-reference-anchor保存实际测量/check/profile源码、编译及采集命令、日志、完整检查、计时、计数器和theory.json；build/reference_anchor_2026-11-09保留忽略的二进制。experiment.py.txt为实际编排脚本，prepare/measure/profile/record分阶段执行；prepare要求新目录。
+
+本轮默认kernel、A转置K32及K64候选均未修改。新增参考入口及记录尚未提交/push。
+
+参考：[NVIDIA RTX5070规格](https://www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5070-family/)、[cuBLAS精度与Tensor Core模式](https://docs.nvidia.com/cuda/cublas/#tensor-core-usage)。
+'''
+    path=repo/'notes/27-gemm-reference-anchor.md'
+    assert not path.exists()
+    path.write_text(note)
+    data=repo/'notes/data/2026-11-09-gemm-reference-anchor'
+    data.mkdir(exist_ok=False)
+    for path in root.iterdir():
+        if path.is_file() and path.suffix in ['.json','.csv','.txt','.cu']:
+            shutil.copyfile(path,data/(path.name+('.txt' if path.suffix=='.cu' else '')))
+    shutil.copyfile(Path(__file__),data/'experiment.py.txt')
+    readme=repo/'README.md'
+    text=readme.read_text()
+    anchor=next(line for line in text.splitlines() if 'notes/26-gemm-k-tile64.md' in line)
+    text=text.replace(anchor,anchor+'\n| [27 · 性能参照与理想计算尺度](notes/27-gemm-reference-anchor.md) | 严格FP32 cuBLAS同期约快1.78倍；指令总量对照支持检查辅助指令成本 |',1)
+    readme.write_text(text)
+    with (repo/'HANDOFF.md').open('a') as stream:
+        stream.write('\n\n2026-11-09晚：因用户认为缺瓶颈/上限参照，补gemm_reference_bench.cu。strict FP32 compute32F_PEDANTIC+PEDANTIC math禁用Tensor Core，row-major以C^T=B^T A^T调用库，七组完整CPU检查和五形状抽查通过。同条件20预热/3x100、三进程交错，2048 A转置K32=1.440502ms，cuBLAS=0.809005ms，参照快1.781倍。标称6144核×2.51GHz×2≈30.84TF，17.18GFLOP对应理想0.557ms，仅作名义频率算术尺度，非严格下界。结构采集学习版约532800777—532801176条warp指令，库303979904条；发射均约77—79%，库FMA更高。profile预热6与普通21不同、时钟约2.19/2.78GHz，不比较profiler耗时或唯一归因指令数。notes/27及原始数据已保存。用户提出后续编译期线程常量、float4 global→shared两项，尚未执行；A需宽读后转置散写，B可连续宽写，需16B对齐和尾部回退。未改学习kernel，未提交。\n')
+    print(json.dumps(theory,indent=2),profile_table,flush=True)
+else:
+    raise ValueError(phase)

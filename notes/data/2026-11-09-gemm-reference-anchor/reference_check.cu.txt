@@ -1,0 +1,49 @@
+// Codex 整理：独立正确性入口，逐个输出与 CPU double 点积比较。
+// nvcc -O3 -arch=sm_120 gemm/gemm_self_check.cu -o build/gemm_self_check
+// ./build/gemm_self_check
+// 覆盖当前已测的小尺寸、非方阵、4×4 小块边缘和跨输出 tile 的情况。
+#define GEMM_REFERENCE_NO_MAIN
+#include "gemm_reference_bench.cu"
+#include <vector>
+
+int main() {
+    cublasHandle_t handle{};
+    check_cublas(cublasCreate(&handle));
+    check_cublas(cublasSetMathMode(handle,CUBLAS_PEDANTIC_MATH));
+    const int cases[][3] = {{1, 1, 1}, {32, 32, 32}, {37, 45, 67}, {64, 33, 96}, {63, 65, 33}, {65, 67, 31}, {129, 130, 35}};
+    for (const auto& shape : cases) {
+        const int M = shape[0], N = shape[1], K = shape[2];
+        std::vector<float> a(size_t(M) * K), b(size_t(K) * N), c(size_t(M) * N);
+        for (size_t i = 0; i < a.size(); ++i) a[i] = (int(i % 17) - 8) * 0.125f;
+        for (size_t i = 0; i < b.size(); ++i) b[i] = (int(i % 13) - 6) * 0.25f;
+        float *da=nullptr,*db=nullptr,*dc=nullptr;
+        CUDA_CHECK(cudaMalloc(&da,a.size()*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&db,b.size()*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&dc,c.size()*sizeof(float)));
+        CUDA_CHECK(cudaMemcpy(da,a.data(),a.size()*sizeof(float),cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(db,b.data(),b.size()*sizeof(float),cudaMemcpyHostToDevice));
+        launch_reference(handle,da,db,dc,M,N,K);
+        CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaMemcpy(c.data(),dc,c.size()*sizeof(float),cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaFree(da)); CUDA_CHECK(cudaFree(db)); CUDA_CHECK(cudaFree(dc));
+        double max_error = 0;
+        for (int row = 0; row < M; ++row) {
+            for (int col = 0; col < N; ++col) {
+                double reference = 0;
+                for (int k = 0; k < K; ++k)
+                    reference += double(a[size_t(row) * K + k]) * b[size_t(k) * N + col];
+                const float actual = c[size_t(row) * N + col];
+                const double error = std::fabs(double(actual) - reference);
+                if (!std::isfinite(actual) || error > 1e-5 + 1e-5 * std::fabs(reference)) {
+                    std::printf("FAIL M=%d N=%d K=%d at (%d,%d): got=%g ref=%g\n",
+                                M, N, K, row, col, actual, reference);
+                    return 1;
+                }
+                if (error > max_error) max_error = error;
+            }
+        }
+        std::printf("PASS M=%d N=%d K=%d max_abs_error=%g\n", M, N, K, max_error);
+    }
+    check_cublas(cublasDestroy(handle));
+    return 0;
+}

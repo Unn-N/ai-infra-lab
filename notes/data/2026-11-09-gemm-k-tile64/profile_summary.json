@@ -1,0 +1,38 @@
+[
+  {
+    "gpu__time_duration.sum": 1317760.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 33554432.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "sm__warps_active.avg.pct_of_peak_sustained_active": 63.16,
+    "smsp__issue_active.avg.pct_of_peak_sustained_active": 77.19,
+    "variant": "k32",
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 1568576.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 33554432.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "sm__warps_active.avg.pct_of_peak_sustained_active": 32.42,
+    "smsp__issue_active.avg.pct_of_peak_sustained_active": 60.86,
+    "variant": "k64",
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 1580512.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 33554432.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "sm__warps_active.avg.pct_of_peak_sustained_active": 32.45,
+    "smsp__issue_active.avg.pct_of_peak_sustained_active": 60.39,
+    "variant": "k64",
+    "repeat": 2
+  },
+  {
+    "gpu__time_duration.sum": 1321856.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 33554432.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "sm__warps_active.avg.pct_of_peak_sustained_active": 63.15,
+    "smsp__issue_active.avg.pct_of_peak_sustained_active": 77.06,
+    "variant": "k32",
+    "repeat": 2
+  }
+]

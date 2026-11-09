@@ -1,0 +1,10 @@
+[
+  "/usr/local/cuda/bin/ncu",
+  "--import",
+  "/home/unn/ai-infra-lab/build/scheduler_2026-11-09/source_r2.ncu-rep",
+  "--page",
+  "raw",
+  "--csv",
+  "--print-units",
+  "base"
+]

@@ -1,0 +1,73 @@
+[563] profile@127.0.0.1
+  gemm_tiled(const float *, const float *, float *, int, int, int) (32, 32, 1)x(16, 16, 1), Context 1, Stream 7, Device 0, CC 12.0
+    Warning: Data collection happened without fixed GPU frequencies. Profiling results may be inconsistent.
+    Section: Compute Workload Analysis
+    -------------------- ----------- ------------
+    Metric Name          Metric Unit Metric Value
+    -------------------- ----------- ------------
+    Executed Ipc Active   inst/cycle         2.95
+    Executed Ipc Elapsed  inst/cycle         2.87
+    Issue Slots Busy               %        71.87
+    Issued Ipc Active     inst/cycle         2.95
+    SM Busy                        %        71.87
+    -------------------- ----------- ------------
+
+    OPT   Shared FMA Heavy is the highest-utilized pipeline (60.1%) based on elapsed cycles in the workload, taking
+          into account the rates of its different instructions. It is a physical pipe and shared by the logical pipes
+          FMA Heavy and ALU Lite. It's dominated by its FMA Heavy sub-pipeline. The pipeline is well-utilized, but
+          might become a bottleneck if more work is added. Based on the number of executed instructions, the highest
+          utilized pipeline (68.8%) is LSU. It executes load/store memory operations. Comparing the two, the overall
+          pipeline utilization appears to be caused by frequent, low-latency instructions. See the Profiling Guide
+          (https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html#metrics-decoder) or hover over the
+          pipeline name to understand the workloads handled by each pipeline. The Instruction Statistics section shows
+          the mix of executed instructions for this workload. Check the Warp State Statistics section for which
+          reasons cause warps to stall.
+
+    Section: Scheduler Statistics
+    ---------------------------- ----------- ------------
+    Metric Name                  Metric Unit Metric Value
+    ---------------------------- ----------- ------------
+    One or More Eligible                   %        74.22
+    Issued Warp Per Scheduler                        0.74
+    No Eligible                            %        25.78
+    Active Warps Per Scheduler          warp         7.55
+    Eligible Warps Per Scheduler        warp         3.33
+    ---------------------------- ----------- ------------
+
+    Section: Warp State Statistics
+    ---------------------------------------- ----------- ------------
+    Metric Name                              Metric Unit Metric Value
+    ---------------------------------------- ----------- ------------
+    Warp Cycles Per Issued Instruction             cycle        10.17
+    Warp Cycles Per Executed Instruction           cycle        10.17
+    Avg. Active Threads Per Warp                                   32
+    Avg. Not Predicated Off Threads Per Warp                    31.85
+    ---------------------------------------- ----------- ------------
+
+    WRN   The optional metric smsp__pcsamp_sample_count could not be found. Collecting it as an additional metric could
+          enable the rule to provide more guidance.
+    ----- --------------------------------------------------------------------------------------------------------------
+    OPT   Est. Local Speedup: 34.42%
+          On average, each warp of this workload spends 3.5 cycles being stalled waiting for the micro scheduler to
+          select the warp to issue. Not selected warps are eligible warps that were not picked by the scheduler to
+          issue that cycle as another warp was selected. A high number of not selected warps typically means you have
+          sufficient warps to cover warp latencies and you may consider reducing the number of active warps to
+          possibly increase cache coherence and data locality. This stall type represents about 34.4% of the total
+          average of 10.2 cycles between issuing two instructions.
+    ----- --------------------------------------------------------------------------------------------------------------
+    INF   Check the Warp Stall Sampling (All Samples) table for the top stall locations in your source based on
+          sampling data. The Profiling Guide
+          (https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html#metrics-reference) provides more details
+          on each stall reason.
+
+    Section: Instruction Statistics
+    ---------------------------------------- ----------- ------------
+    Metric Name                              Metric Unit Metric Value
+    ---------------------------------------- ----------- ------------
+    Local Memory Spilling Requests                  byte            0
+    Shared Memory Spilling Requests                 byte            0
+    Avg. Executed Instructions Per Scheduler        inst   2928042.67
+    Executed Instructions                           inst    562184192
+    Avg. Issued Instructions Per Scheduler          inst   2928042.67
+    Issued Instructions                             inst    562184192
+    ---------------------------------------- ----------- ------------

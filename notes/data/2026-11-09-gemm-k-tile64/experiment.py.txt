@@ -1,0 +1,196 @@
+from pathlib import Path
+import subprocess, json, hashlib, re, statistics, csv, io, shutil, sys
+
+repo=Path('/home/unn/ai-infra-lab')
+root=repo/'build/transpose_a_k64_2026-11-09'
+previous=repo/'build/transpose_a_2026-11-09/transA'
+nvcc='/usr/local/cuda/bin/nvcc'
+ncu='/usr/local/cuda/bin/ncu'
+names=['k32','k64']
+
+def run(cmd,path):
+    path.with_suffix('.command.json').write_text(json.dumps(cmd,indent=2))
+    result=subprocess.run(cmd,capture_output=True,text=True)
+    path.write_text(result.stdout+result.stderr)
+    if result.returncode:
+        print(result.stdout+result.stderr,flush=True)
+        raise RuntimeError(cmd)
+    return result.stdout
+
+phase=sys.argv[1]
+if phase=='prepare':
+    root.mkdir(exist_ok=False)
+    baseline=(repo/'gemm/gemm_self_transpose_a.cu').read_text()
+    assert hashlib.sha256(baseline.encode()).hexdigest()=='8a1cdb9617227d1b81f858df4f90607b0ec4657fc663f2cab84383207309be14'
+    needle='constexpr int K_TILE      = 32;'
+    assert baseline.count(needle)==1
+    candidate=baseline.replace(needle,'constexpr int K_TILE      = 64;')
+    candidate=candidate.replace('每轮沿 K 方向搬入、计算的长度。','[Codex K64实验] 每轮沿K处理64项；输出块和每线程输出保持不变。')
+    candidate=candidate.replace('K_TILE 仍为 32','K_TILE 改为 64')
+    candidate=candidate.replace('A的有效64×32输入块，在shared中按[k][r]存成32×64。','A的有效64×64输入块，在shared中按[k][r]转置摆放，数组为64×68。')
+    candidate=candidate.replace('A 输入块：64 行、32 列；当前每线程搬 8 个元素。','A 输入块：64 行、64 列；当前每线程搬16个元素。')
+    candidate=candidate.replace('B 输入块：32 行、64 列；当前每线程搬 8 个元素。','B 输入块：64 行、64 列；当前每线程搬16个元素。')
+    metadata={}
+    for name,source in [('k32',baseline),('k64',candidate)]:
+        folder=root/name
+        folder.mkdir()
+        (folder/'gemm_self_re.cu').write_text(source)
+        for filename in ['gemm_self_bench.cu','gemm_self_check.cu','resource.cu','profile.cu']:
+            shutil.copyfile(previous/filename,folder/filename)
+        metadata[name]={'sha256':hashlib.sha256(source.encode()).hexdigest(),'output_tile':64,'K_tile':32 if name=='k32' else 64,'thread_tile':4,'block_threads':256,'A_shared_stride':68}
+        for sourcefile,binary in [('gemm_self_bench.cu','bench'),('gemm_self_check.cu','check'),('resource.cu','resource'),('profile.cu','profile')]:
+            run([nvcc,'-O3','-lineinfo','-arch=sm_120',str(folder/sourcefile),'-o',str(folder/binary)],folder/f'compile_{binary}.txt')
+        print('Compiled',name,flush=True)
+        print(run([str(folder/'check')],root/f'{name}_check.txt'),flush=True)
+        resource=json.loads(run([str(folder/'resource')],root/f'{name}_resource.txt'))
+        (root/f'{name}_resource.json').write_text(json.dumps(resource,indent=2))
+        sass=run(['/usr/local/cuda/bin/cuobjdump','--dump-sass',str(folder/'bench')],root/f'{name}_sass.txt')
+        counts={key:len(re.findall(r'\b'+re.escape(key)+r'\s',sass)) for key in ['LDS','LDS.64','LDS.128','STS','FFMA','BAR.SYNC']}
+        (root/f'{name}_sass_counts.json').write_text(json.dumps(counts,indent=2))
+        print(name,resource,counts,flush=True)
+    (root/'metadata.json').write_text(json.dumps(metadata,indent=2))
+elif phase=='measure':
+    runs=[]
+    repeats={name:0 for name in names}
+    for name in ['k32','k64','k64','k32','k32','k64']:
+        repeats[name]+=1
+        output=run([str(root/name/'bench')],root/f'{name}_run{repeats[name]}.txt')
+        rows=[]
+        for line in output.splitlines():
+            parts=line.split()
+            if len(parts)==9 and all(x.isdigit() for x in parts[:3]):
+                rows.append({'shape':list(map(int,parts[:3])),'rounds_ms':list(map(float,parts[3:6])),'median_ms':float(parts[6])})
+        assert len(rows)==5,output
+        result={'variant':name,'repeat':repeats[name],'rows':rows}
+        runs.append(result)
+        print(result,flush=True)
+    summary=[]
+    for i in range(5):
+        entry={'shape':runs[0]['rows'][i]['shape']}
+        for name in names:
+            matches=[r['rows'][i] for r in runs if r['variant']==name]
+            values=[v for row in matches for v in row['rounds_ms']]
+            entry[name]={'median_ms':statistics.median(values),'all_round_ms':values,'process_medians':[r['median_ms'] for r in matches]}
+        entry['speedup']=entry['k32']['median_ms']/entry['k64']['median_ms']
+        summary.append(entry)
+    (root/'runs.json').write_text(json.dumps(runs,indent=2))
+    (root/'summary.json').write_text(json.dumps(summary,indent=2))
+    print(json.dumps(summary,indent=2),flush=True)
+elif phase=='profile':
+    metrics=['gpu__time_duration.sum','smsp__sass_inst_executed_op_shared_ld.sum','smsp__sass_inst_executed_op_shared_st.sum','sm__warps_active.avg.pct_of_peak_sustained_active','smsp__issue_active.avg.pct_of_peak_sustained_active']
+    results=[]
+    for repeat,order in enumerate([names,list(reversed(names))],1):
+        for name in order:
+            tag=f'{name}_profile{repeat}'
+            cmd=[ncu,'--replay-mode','application','--cache-control','none','--clock-control','none','--kernel-name','regex:gemm_tiled','--launch-skip','6','--launch-count','1','--metrics',','.join(metrics),'--export',str(root/tag),'--force-overwrite',str(root/name/'profile'),'2048','2048','2048']
+            run(cmd,root/f'{tag}_capture.txt')
+            output=run([ncu,'--import',str(root/f'{tag}.ncu-rep'),'--page','raw','--csv','--print-units','base'],root/f'{tag}.csv')
+            row=next(row for row in csv.DictReader(io.StringIO(output)) if row.get('ID')=='0')
+            result={key:float(row[key].replace(',','')) for key in metrics}
+            result.update(variant=name,repeat=repeat)
+            results.append(result)
+            print(json.dumps(result),flush=True)
+    (root/'profile_summary.json').write_text(json.dumps(results,indent=2))
+elif phase=='record':
+    summary=json.loads((root/'summary.json').read_text())
+    profiles=json.loads((root/'profile_summary.json').read_text())
+    assert len(profiles)==4
+    assert (repo/'gemm/gemm_self_transpose_a.cu').read_bytes()==(root/'k32/gemm_self_re.cu').read_bytes()
+    candidate=repo/'gemm/gemm_self_transpose_a_k64.cu'
+    assert not candidate.exists()
+    shutil.copyfile(root/'k64/gemm_self_re.cu',candidate)
+    launch={}
+    for name in names:
+        sass=(root/f'{name}_sass.txt').read_text()
+        counts=json.loads((root/f'{name}_sass_counts.json').read_text())
+        counts['BAR.SYNC']=len(re.findall(r'\bBAR\.SYNC(?:\.\w+)*\s',sass))
+        (root/f'{name}_sass_counts.json').write_text(json.dumps(counts,indent=2))
+        row=next(row for row in csv.DictReader(io.StringIO((root/f'{name}_profile1.csv').read_text())) if row.get('ID')=='0')
+        launch[name]={k:v for k,v in row.items() if k.startswith('launch__shared_mem') or k.startswith('launch__occupancy_limit')}
+    (root/'launch_context.json').write_text(json.dumps(launch,indent=2))
+    table='| M,N,K | K_TILE=32 ms | K_TILE=64 ms | 原/新加速比 |\n|---|---:|---:|---:|\n'
+    for row in summary:
+        table+='| '+', '.join(map(str,row['shape']))+f" | {row['k32']['median_ms']:.6f} | {row['k64']['median_ms']:.6f} | {row['speedup']:.3f}× |\n"
+    metric_table='| 2048指标 | K_TILE=32 | K_TILE=64 |\n|---|---:|---:|\n'
+    for label,key,digits in [('实际active warp占用率，active周期 %','sm__warps_active.avg.pct_of_peak_sustained_active',2),('调度器发射活跃，active周期 %','smsp__issue_active.avg.pct_of_peak_sustained_active',2),('动态shared加载warp指令','smsp__sass_inst_executed_op_shared_ld.sum',0),('动态shared存储warp指令','smsp__sass_inst_executed_op_shared_st.sum',0)]:
+        spans=[]
+        for name in names:
+            values=[p[key] for p in profiles if p['variant']==name]
+            spans.append(f'{min(values):,.{digits}f}—{max(values):,.{digits}f}')
+        metric_table+='| '+label+' | '+' | '.join(spans)+' |\n'
+    large=summary[2]
+    slowdown=(large['k64']['median_ms']/large['k32']['median_ms']-1)*100
+    note='''# 26 · 转置版 K_TILE 从32扩大到64
+
+2026-11-09晚间。用户希望把每轮输入改为64×64、增加shared容量使用，授权只改K_TILE。以notes/25最新A局部转置版为对照，保持OUTPUT_TILE=64、THREAD_TILE=4、16×16线程、A行宽68及16B对齐、B布局、单缓冲和计算源码，仅K_TILE从32改64，并更新相关注释。未同时加入编译期线程步长或其他优化。
+
+## 数据分批和资源
+
+| 项目 | K_TILE=32 | K_TILE=64 |
+|---|---:|---:|
+| 每轮有效A输入 | 64×32 | 64×64 |
+| 每轮有效B输入 | 32×64 | 64×64 |
+| A shared数组 | 32×68 | 64×68 |
+| B shared数组 | 32×64 | 64×64 |
+| 每线程每轮搬A/B各 | 8个 | 16个 |
+| 每block static shared | 16896B，16.5KiB | 33792B，33KiB |
+| 寄存器/线程 | 64 | 64 |
+| local/线程 | 0B | 0B |
+| 理论block/SM | 4 | 2 |
+| 上述驻留组合static shared/SM | 66KiB | 66KiB |
+| 上述驻留组合线程/SM | 1024 | 512 |
+| 理论active warp占用率 | 66.67% | 33.33% |
+| K=2048时K外循环轮次 | 64 | 32 |
+| 每block的源码块内同步次数 | 128 | 64 |
+
+说明：shared总量由A padding额外空间一起计入。单block容量翻倍不代表SM上的总shared驻留容量翻倍，因为可驻留block同时减少。占用率在此特指warp容量口径，与shared容量使用是不同指标。每SM的driver保留与实际分配粒度也影响可驻留数量，CUDA occupancy查询直接给出两版4/2；launch_context.json留存profiler所带共享内存上下文。
+
+输出块未扩大，数据复用范围保持相同。对整除输入，一轮输入量与一轮计算量同时翻倍，总源码逻辑global加载量和总乘加量不变；减少的是批次数与同步次数。非整齐K的尾部填零计算量可能不同，例如K=257对应288或320个被遍历的k位置。
+
+## 正确性与计时
+
+两版均重新编译-O3 -lineinfo -arch=sm_120，七组逐输出CPU double检查全部通过；六次进程五组形状的64点CPU double计时前抽查也全部通过。K=67/96覆盖K_TILE=64的跨批次和尾部。Compute Sanitizer此前被Windows WDDM调试接口阻挡，本轮未重试，不声称通过竞争/同步检测。
+
+同一固定随机输入、CUDA events、每进程5次预热、3轮每轮20次启动；每版三进程，顺序k32/k64/k64/k32/k32/k64，取九个批次平均耗时中位数。缓冲复用不清L2，分配/拷贝/校验不计时。只比较本轮同期数字，不将上午1.48ms与晚间1.93ms直接相除。
+
+'''+table+f'''
+2048方阵由{large['k32']['median_ms']:.6f}ms变为{large['k64']['median_ms']:.6f}ms，耗时增加约{slowdown:.2f}%。k32三次进程中位数1.661328/1.719706/1.690800ms；k64为1.874218/1.904104/1.983323ms，方向一致且本轮范围分离。512中位数微幅改善但差距小，长方形有一次候选进程明显更慢，短/边缘任务均有噪声，不据此确定普遍收益或调度规则。
+
+## 2048实测驻留与发射
+
+相同profile入口，六次调用后采第七次。Nsight Compute application replay、cache-control none、clock-control none，两版正反顺序各一轮，少量指标分组采集。profiler耗时不替代普通计时。
+
+'''+metric_table+'''
+实测active warp占用率由约63%降到约32%，与理论4block/SM降为2block/SM一致；调度器发射活跃由约77%降到约60%。shared加载和存储的动态总指令数相同，两版SASS均保留128位shared读取（静态16条LDS.128、128条FFMA，仍按8个k组织）。
+
+这提供了具体退步线索：扩大K批次带来更高单block shared需求，同时减少可驻留warp、降低本轮指令发射活跃。尚未隔离全部调度/编译效应，不将15.7%的全部变化唯一归因某一个资源指标，也不把较低warp occupancy普遍视为必然慢。
+
+## 当前状态
+
+独立候选gemm/gemm_self_transpose_a_k64.cu；gemm_self_transpose_a.cu继续保留K_TILE=32，默认gemm_self_re.cu也不变。本轮只试64这一档，没有继续扫描K=16/48/96等参数，没有引入其他优化，尚未提交/push。
+
+原始源码、编译命令、检查、普通计时、资源、SASS与两轮计数器保存在notes/data/2026-11-09-gemm-k-tile64；可执行文件及.ncu-rep忽略于build/transpose_a_k64_2026-11-09。experiment.py.txt为实际编排脚本，prepare/measure/profile/record分阶段执行，prepare要求新目录。基线SHA256为8a1cdb9617227d1b81f858df4f90607b0ec4657fc663f2cab84383207309be14，候选SHA见metadata.json。
+'''
+    path=repo/'notes/26-gemm-k-tile64.md'
+    assert not path.exists()
+    path.write_text(note)
+    data=repo/'notes/data/2026-11-09-gemm-k-tile64'
+    data.mkdir(exist_ok=False)
+    for path in root.iterdir():
+        if path.is_file() and path.suffix in ['.json','.txt','.csv']:
+            shutil.copyfile(path,data/path.name)
+    for name in names:
+        for path in (root/name).iterdir():
+            if path.suffix in ['.cu','.txt','.json']:
+                shutil.copyfile(path,data/(f'{name}_{path.name}'+('.txt' if path.suffix=='.cu' else '')))
+    shutil.copyfile(Path(__file__),data/'experiment.py.txt')
+    readme=repo/'README.md'
+    text=readme.read_text()
+    anchor=next(line for line in text.splitlines() if 'notes/25-gemm-transpose-a.md' in line)
+    text=text.replace(anchor,anchor+'\n| [26 · K_TILE扩大到64](notes/26-gemm-k-tile64.md) | 单block shared翻倍、驻留减半；2048本轮耗时增加约15.7% |',1)
+    readme.write_text(text)
+    with (repo/'HANDOFF.md').open('a') as stream:
+        stream.write('\n\n2026-11-09晚：按用户要求只将A转置版K_TILE32→64。候选gemm/gemm_self_transpose_a_k64.cu，A/B有效输入均64×64，Ats64×68、Bs64×64，static shared16.5→33KiB、寄存器均64，理论4→2block/SM。七组完整检查与五形状性能抽查通过。2048同期1.667160→1.929429ms（耗时+15.73%），三进程方向一致；实际active warp占用63.15—63.16%→32.42—32.45%，发射77.06—77.19%→60.39—60.86%。动态shared读写指令总量不变，源码同步轮数减半但复用范围不变。notes/26和文本原始数据已保存，K32转置版和默认re保留，未继续其他参数，未提交。\n')
+    print(table,metric_table,json.dumps(launch,indent=2),flush=True)
+else:
+    raise ValueError(phase)

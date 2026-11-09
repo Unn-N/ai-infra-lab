@@ -1,0 +1,38 @@
+[
+  {
+    "gpu__time_duration.sum": 1302560.0,
+    "smsp__inst_executed.sum": 532799488.0,
+    "smsp__issue_active.avg.pct_of_peak_sustained_active": 77.77,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 33554432.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "variant": "runtime",
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 1272256.0,
+    "smsp__inst_executed.sum": 490979328.0,
+    "smsp__issue_active.avg.pct_of_peak_sustained_active": 73.3,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 33554432.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "variant": "constant",
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 1271936.0,
+    "smsp__inst_executed.sum": 490979328.0,
+    "smsp__issue_active.avg.pct_of_peak_sustained_active": 73.28,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 33554432.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "variant": "constant",
+    "repeat": 2
+  },
+  {
+    "gpu__time_duration.sum": 1304768.0,
+    "smsp__inst_executed.sum": 532799488.0,
+    "smsp__issue_active.avg.pct_of_peak_sustained_active": 77.85,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 33554432.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "variant": "runtime",
+    "repeat": 2
+  }
+]

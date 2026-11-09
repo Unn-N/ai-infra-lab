@@ -1,0 +1,269 @@
+from pathlib import Path
+import subprocess, json, hashlib, re, statistics, csv, io, shutil, sys
+
+repo=Path('/home/unn/ai-infra-lab')
+root=repo/'build/float4_factorial_2026-11-09'
+previous=repo/'build/const_block_2026-11-09/constant'
+nvcc='/usr/local/cuda/bin/nvcc'
+names=['plain_scalar','plain_float4','trans_scalar','trans_float4']
+
+def run(cmd,path):
+    path.with_suffix('.command.json').write_text(json.dumps(cmd,indent=2))
+    r=subprocess.run(cmd,capture_output=True,text=True)
+    path.write_text(r.stdout+r.stderr)
+    if r.returncode:
+        print(r.stdout+r.stderr,flush=True)
+        raise RuntimeError(cmd)
+    return r.stdout
+
+def vector_loads(transposed):
+    astore='''            // 转置目标的四个位置分散，宽读后分别写入。
+            Ats[k+0][r]=v.x; Ats[k+1][r]=v.y;
+            Ats[k+2][r]=v.z; Ats[k+3][r]=v.w;''' if transposed else '''            // 未转置目标的四个位置连续且16B对齐，可以宽写。
+            *reinterpret_cast<float4*>(&As[r][k])=v;'''
+    return '''        // [Codex float4实验] 搬运按四元素组分配；每线程每轮各搬两组A、两组B。
+        for (int group=tid; group<OUTPUT_TILE*K_TILE/4; group+=BLOCK_THREADS) {
+            const int index=group*4;
+            const int r=index/K_TILE, k=index%K_TILE;
+            const int gr=block_row+r, gk=k0+k;
+            float4 v=make_float4(0.0f,0.0f,0.0f,0.0f);
+            if (gr<M) {
+                // cudaMalloc起点对齐，K为4的倍数且gk为4的倍数时，每行此处16B对齐。
+                if ((K%4)==0 && gk+3<K) {
+                    v=*reinterpret_cast<const float4*>(A+size_t(gr)*K+gk);
+                } else {
+                    // 行跨度不对齐或K尾部：逐元素读取，越界填零。
+                    v.x=gk+0<K ? A[size_t(gr)*K+gk+0] : 0.0f;
+                    v.y=gk+1<K ? A[size_t(gr)*K+gk+1] : 0.0f;
+                    v.z=gk+2<K ? A[size_t(gr)*K+gk+2] : 0.0f;
+                    v.w=gk+3<K ? A[size_t(gr)*K+gk+3] : 0.0f;
+                }
+            }
+'''+astore+'''
+        }
+        for (int group=tid; group<K_TILE*OUTPUT_TILE/4; group+=BLOCK_THREADS) {
+            const int index=group*4;
+            const int k=index/OUTPUT_TILE, c=index%OUTPUT_TILE;
+            const int gk=k0+k, gc=block_col+c;
+            float4 v=make_float4(0.0f,0.0f,0.0f,0.0f);
+            if (gk<K) {
+                if ((N%4)==0 && gc+3<N) {
+                    v=*reinterpret_cast<const float4*>(B+size_t(gk)*N+gc);
+                } else {
+                    v.x=gc+0<N ? B[size_t(gk)*N+gc+0] : 0.0f;
+                    v.y=gc+1<N ? B[size_t(gk)*N+gc+1] : 0.0f;
+                    v.z=gc+2<N ? B[size_t(gk)*N+gc+2] : 0.0f;
+                    v.w=gc+3<N ? B[size_t(gk)*N+gc+3] : 0.0f;
+                }
+            }
+            // Bs每行64个float、c为4的倍数，shared目标始终可安全宽写。
+            *reinterpret_cast<float4*>(&Bs[k][c])=v;
+        }
+'''
+
+phase=sys.argv[1]
+if phase=='prepare':
+    root.mkdir(exist_ok=False)
+    base=(repo/'gemm/gemm_self_const_block.cu').read_text()
+    assert hashlib.sha256(base.encode()).hexdigest()=='44808b7004cb4545336c20340cf90587439cd5d3aaad1cd7479f47f5457ba660'
+    # Give all four groups identical explicit shared alignment, including scalar controls.
+    base=base.replace('__shared__ float Bs[K_TILE][OUTPUT_TILE];','__shared__ __align__(16) float Bs[K_TILE][OUTPUT_TILE];')
+    metadata={}
+    for name in names:
+        transposed=name.startswith('trans_'); vector=name.endswith('float4')
+        source=base
+        if not transposed:
+            start=source.index('    // [Codex A局部转置实验] A的有效')
+            end=source.index('    __shared__ __align__(16) float Bs',start)
+            source=source[:start]+'''    // [Codex 四组对照] 未转置A布局；与其他组相同，数组起点显式16B对齐。
+    __shared__ __align__(16) float As[OUTPUT_TILE][K_TILE];
+'''+source[end:]
+            source=source.replace('Ats[k][r] =','As[r][k] =')
+            source=source.replace('a[i] = Ats[k][local_row + i];','a[i] = As[local_row + i][k];')
+            source=source.replace('// [Codex A局部转置实验] global读地址不变，只把shared目标索引调换。','// [Codex 四组对照] global与shared均按原布局搬运。')
+            source=source.replace('// [Codex A局部转置实验] 当前k所需四个A在shared中连续；B维持原布局。','// [Codex 四组对照] A维持跨行读取，B仍连续读取四个值。')
+        if vector:
+            anchor='// ===== Codex 补充结束 ====='
+            source=source.replace(anchor,'''// [Codex float4实验] 当前四元素分组要求输入tile两边均为4的倍数。
+static_assert(K_TILE % 4 == 0 && OUTPUT_TILE % 4 == 0, "Vector loading requires tile extents divisible by four.");
+'''+anchor,1)
+            start=source.index('        // A 输入块：')
+            end=source.index('        __syncthreads();',start)
+            source=source[:start]+vector_loads(transposed)+source[end:]
+        folder=root/name; folder.mkdir()
+        (folder/'gemm_self_re.cu').write_text(source)
+        for filename in ['gemm_self_bench.cu','gemm_self_check.cu','resource.cu','profile.cu']:
+            text=(previous/filename).read_text()
+            if filename=='gemm_self_check.cu':
+                text=text.replace('{129, 130, 35}};','{129, 130, 35}, {67, 68, 35}, {67, 68, 36}, {67, 69, 36}};')
+            (folder/filename).write_text(text)
+        metadata[name]={'sha256':hashlib.sha256(source.encode()).hexdigest(),'transpose_A':transposed,'float4_transport':vector,'output_tile':64,'K_tile':32,'thread_tile':4,'block_threads':256,'shared_alignment':16}
+        for sourcefile,binary in [('gemm_self_bench.cu','bench'),('gemm_self_check.cu','check'),('resource.cu','resource'),('profile.cu','profile')]:
+            run([nvcc,'-O3','-lineinfo','-arch=sm_120',str(folder/sourcefile),'-o',str(folder/binary)],folder/f'compile_{binary}.txt')
+        print('Compiled',name,flush=True)
+        checks=run([str(folder/'check')],root/f'{name}_check.txt')
+        assert checks.count('PASS M=')==10,checks
+        print(checks,flush=True)
+        resource=json.loads(run([str(folder/'resource')],root/f'{name}_resource.txt'))
+        (root/f'{name}_resource.json').write_text(json.dumps(resource,indent=2))
+        sass=run(['/usr/local/cuda/bin/cuobjdump','--dump-sass',str(folder/'bench')],root/f'{name}_sass.txt')
+        opcodes=re.findall(r'/\*[0-9a-f]+\*/\s+(?:@!?[A-Z0-9]+\s+)?([A-Z][A-Z0-9]*(?:\.[A-Z0-9_]+)*)\s',sass)
+        counts={key:opcodes.count(key) for key in sorted(set(opcodes))}
+        (root/f'{name}_sass_counts.json').write_text(json.dumps(counts,indent=2))
+        print(name,resource,{key:value for key,value in counts.items() if key.startswith(('LDG','LDS','STS'))},flush=True)
+    (root/'metadata.json').write_text(json.dumps(metadata,indent=2))
+elif phase=='measure':
+    runs=[]; repeats={name:0 for name in names}
+    orders=[names,list(reversed(names)),['plain_float4','trans_scalar','plain_scalar','trans_float4']]
+    for order in orders:
+        for name in order:
+            repeats[name]+=1
+            output=run([str(root/name/'bench')],root/f'{name}_run{repeats[name]}.txt')
+            rows=[]
+            for line in output.splitlines():
+                parts=line.split()
+                if len(parts)==9 and all(x.isdigit() for x in parts[:3]):
+                    rows.append({'shape':list(map(int,parts[:3])),'rounds_ms':list(map(float,parts[3:6])),'median_ms':float(parts[6])})
+            assert len(rows)==5,output
+            entry={'variant':name,'repeat':repeats[name],'rows':rows}
+            runs.append(entry); print(entry,flush=True)
+    summary=[]
+    for i in range(5):
+        entry={'shape':runs[0]['rows'][i]['shape']}
+        for name in names:
+            matches=[r['rows'][i] for r in runs if r['variant']==name]
+            values=[v for row in matches for v in row['rounds_ms']]
+            entry[name]={'median_ms':statistics.median(values),'all_round_ms':values,'process_medians':[row['median_ms'] for row in matches]}
+        entry['plain_vector_speedup']=entry['plain_scalar']['median_ms']/entry['plain_float4']['median_ms']
+        entry['trans_vector_speedup']=entry['trans_scalar']['median_ms']/entry['trans_float4']['median_ms']
+        summary.append(entry)
+    (root/'runs.json').write_text(json.dumps(runs,indent=2))
+    (root/'summary.json').write_text(json.dumps(summary,indent=2))
+    print(json.dumps(summary,indent=2),flush=True)
+elif phase=='profile':
+    metrics=['gpu__time_duration.sum','smsp__inst_executed.sum','smsp__sass_inst_executed_op_global_ld.sum','smsp__sass_inst_executed_op_shared_ld.sum','smsp__sass_inst_executed_op_shared_st.sum','l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum']
+    results=[]
+    for repeat,order in enumerate([names,list(reversed(names))],1):
+        for name in order:
+            tag=f'{name}_profile{repeat}'
+            cmd=['/usr/local/cuda/bin/ncu','--replay-mode','application','--cache-control','none','--clock-control','none','--kernel-name','regex:gemm_tiled','--launch-skip','6','--launch-count','1','--metrics',','.join(metrics),'--export',str(root/tag),'--force-overwrite',str(root/name/'profile'),'2048','2048','2048']
+            run(cmd,root/f'{tag}_capture.txt')
+            output=run(['/usr/local/cuda/bin/ncu','--import',str(root/f'{tag}.ncu-rep'),'--page','raw','--csv','--print-units','base'],root/f'{tag}.csv')
+            row=next(row for row in csv.DictReader(io.StringIO(output)) if row.get('ID')=='0')
+            entry={key:float(row[key].replace(',','')) for key in metrics}
+            entry.update(variant=name,repeat=repeat)
+            results.append(entry); print(json.dumps(entry),flush=True)
+    (root/'profile_summary.json').write_text(json.dumps(results,indent=2))
+elif phase=='record':
+    summary=json.loads((root/'summary.json').read_text())
+    profiles=json.loads((root/'profile_summary.json').read_text())
+    assert len(profiles)==8
+    outputs={'plain_scalar':'gemm_self_plain_const.cu','plain_float4':'gemm_self_float4_plain.cu','trans_scalar':'gemm_self_transpose_const_aligned.cu','trans_float4':'gemm_self_float4.cu'}
+    for name,filename in outputs.items():
+        target=repo/'gemm'/filename
+        assert not target.exists()
+        shutil.copyfile(root/name/'gemm_self_re.cu',target)
+    table='| M,N,K | 未转置/标量 ms | 未转置/float4 ms | 转置/标量 ms | 转置/float4 ms |\n|---|---:|---:|---:|---:|\n'
+    for row in summary:
+        table+='| '+', '.join(map(str,row['shape']))+' | '+' | '.join(f"{row[name]['median_ms']:.6f}" for name in names)+' |\n'
+    resource_table='| 资源 | 未转置/标量 | 未转置/float4 | 转置/标量 | 转置/float4 |\n|---|---:|---:|---:|---:|\n'
+    resources={name:json.loads((root/f'{name}_resource.json').read_text()) for name in names}
+    for label,key in [('寄存器/线程','regs'),('static shared/block B','static_shared'),('local/线程 B','local'),('理论block/SM','blocks_per_SM')]:
+        resource_table+='| '+label+' | '+' | '.join(str(resources[name][key]) for name in names)+' |\n'
+    metric_table='| 2048指标 | 未转置/标量 | 未转置/float4 | 转置/标量 | 转置/float4 |\n|---|---:|---:|---:|---:|\n'
+    for label,key in [('动态warp指令总数','smsp__inst_executed.sum'),('动态global加载warp指令','smsp__sass_inst_executed_op_global_ld.sum'),('动态shared加载warp指令','smsp__sass_inst_executed_op_shared_ld.sum'),('动态shared存储warp指令','smsp__sass_inst_executed_op_shared_st.sum'),('shared写入bank conflicts','l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum')]:
+        spans=[]
+        for name in names:
+            values=[p[key] for p in profiles if p['variant']==name]
+            spans.append(f'{min(values):,.0f}—{max(values):,.0f}')
+        metric_table+='| '+label+' | '+' | '.join(spans)+' |\n'
+    large=summary[2]
+    note='''# 29 · float4搬运：有无A转置的四组对照
+
+2026-11-09晚间。用户授权实施float4 global→shared搬运，并增加未转置分支，比较转置前后向量化的增量收益。本轮采用2×2设计：A是否转置 × 搬运是否float4。
+
+## 公共条件与四个源码
+
+四组均为OUTPUT_TILE=64、K_TILE=32、THREAD_TILE=4、16×16线程、编译期BLOCK_SIDE/BLOCK_THREADS、单缓冲和相同acc[4][4]计算/同步/边界写回。两种A布局为As[64][32]或Ats[32][68]，B均为Bs[32][64]。
+
+为使所有float4 shared写入在源码层面明确满足对齐，四组共同显式声明A/B shared数组起点16B对齐。相比notes/28现有转置标量源，公共基线新增了Bs的__align__(16)；它也影响代码生成（该基线寄存器61→本轮56）。因此只用本轮四组同期数字隔离向量化收益，不把它们直接拼接为上一项的累计提升。未额外添加#pragma unroll、双缓冲、K64等改动。
+
+| 名称 | 文件 | A布局 | 搬运 |
+|---|---|---|---|
+| plain_scalar | gemm/gemm_self_plain_const.cu | 未转置 | 原标量循环 |
+| plain_float4 | gemm/gemm_self_float4_plain.cu | 未转置 | A/B宽读宽写 |
+| trans_scalar | gemm/gemm_self_transpose_const_aligned.cu | 转置 | 原标量循环 |
+| trans_float4 | gemm/gemm_self_float4.cu | 转置 | A宽读散写、B宽读宽写 |
+
+原gemm_self_re.cu、gemm_self_transpose_a.cu、gemm_self_const_block.cu均保留；默认测量入口不切换。四组公开文件都有实际测试源码快照。
+
+## float4如何搬运
+
+搬运按四元素组编号group分配，每线程每轮各搬两组A和B，共8个A/8个B，与标量版有效元素量相同。A沿global原行读取四个相邻k位置；未转置时整体写As[r][k..k+3]，转置时分别写Ats[k+j][r]。B沿global行读取相邻四列并整体写Bs[k][c..c+3]。
+
+当前run_gemm与bench使用cudaMalloc分配设备起点；以此对齐前提，A只有K%4==0且四元素全部有效才走float4读取，B只有N%4==0且四列有效才走float4读取。行跨度不对齐、尾部或无效行走逐元素读取/填零；shared目标始终以四元素组覆盖完整tile，padding不读。没有宣称支持任意偏移设备基指针的向量快路径。
+
+global有效字节流量不因float4减少，改变的是分组、指令宽度和辅助代码；实际代码生成需SASS/计数器确认。
+
+## 正确性
+
+四组均重新编译-O3 -lineinfo -arch=sm_120，十组逐输出CPU double检查全部通过。原七组为(1,1,1)、(32,32,32)、(37,45,67)、(64,33,96)、(63,65,33)、(65,67,31)、(129,130,35)。新增：
+
+- (67,68,35)：A标量回退、B向量读取，K尾部跨批次。
+- (67,68,36)：A/B向量读取，M/N边缘、跨输出tile、K尾部。
+- (67,69,36)：A向量读取、B标量回退。
+
+四组十二个进程、五组性能输入的计时前64点CPU double抽查均通过。Compute Sanitizer此前被Windows WDDM调试接口阻挡，本轮未重试，不声称通过竞争/同步检测。
+
+## 同期普通计时
+
+固定五形状和随机输入，20次预热、每进程3轮每轮100次启动；每版3进程，共9轮，表中取批量平均耗时中位数。三轮版本顺序为四组正序、四组逆序、plain_float4/trans_scalar/plain_scalar/trans_float4。CUDA events、缓冲复用、不清L2，不计分配/拷贝/校验。
+
+'''+table+f'''
+2048中，未转置加入float4：{large['plain_scalar']['median_ms']:.6f}→{large['plain_float4']['median_ms']:.6f}ms，加速{large['plain_vector_speedup']:.3f}倍，耗时下降{(1-1/large['plain_vector_speedup'])*100:.2f}%；转置加入float4：{large['trans_scalar']['median_ms']:.6f}→{large['trans_float4']['median_ms']:.6f}ms，加速{large['trans_vector_speedup']:.3f}倍，耗时下降{(1-1/large['trans_vector_speedup'])*100:.2f}%。两种布局三次进程均显示向量版更快，本轮各自范围分离。
+
+两种增量收益接近，不能把1.132与1.126的小差异视作稳定的交互强弱；没有看到转置显著限制2048整体向量化收益。四组中转置+float4最快，比未转置+float4本轮快约{large['plain_float4']['median_ms']/large['trans_float4']['median_ms']:.3f}倍。
+
+512中未转置+float4三次进程均更快；转置+float4并无一致收益。小/窄/非整齐输入轮次和进程波动明显，不确定稳定排名，128部分进程由约10微秒升到约25微秒，未独立归因。非整齐(127,513,257)因K/N均非4倍数，两侧global向量快路径不触发，但shared写法和控制代码仍变化，不能把该行变化叫作global宽加载的收益。
+
+## 资源与真实搬运指令
+
+'''+resource_table+'''
+两种布局float4都降低了本轮寄存器需求，理论驻留4→5block/SM。收益包含指令组织、寄存器和潜在驻留变化，不单独全部归因128位global读。
+
+SASS确认两种向量版包含LDG.E.128.CONSTANT，两条静态宽读取分别服务A/B；仍保留8条标量LDG供回退。未转置版生成两条STS.128，转置版生成A侧四条标量STS和B侧一条STS.128。基线的global读取为标量。静态指令条数受展开影响，完整原始SASS和opcode计数留存。
+
+## 2048计数器
+
+Nsight Compute application replay、cache-control none、clock-control none；六次调用后采第七次，正反顺序各一轮。此处预热口径不同于普通计时21次先行调用，且未锁频，profiler耗时不替代普通计时。只用动态计数验证结构变化。
+
+'''+metric_table+'''
+两种布局的global加载warp指令都从8,388,608降到2,097,152，减少75%。未转置shared存储也减少75%；转置版只从8,388,608降到5,242,880（减少37.5%），A散写的限制真实存在。与此同时，转置版的计算shared加载仍比未转置版少三分之一。不同读写代价叠加后，2048两种布局的向量化增量收益接近，转置+float4净结果更快。
+
+没有锁定唯一整体主瓶颈，也没有声称float4减少有效数据量或保证任意尺寸加速。尚未以新版本重测cuBLAS，不能将前一轮库0.809ms与本轮1.267ms直接作为严格同期差距。
+
+## 保存与复现
+
+notes/data/2026-11-09-gemm-float4-factorial保存四组实际源码、共同bench/check/resource/profile入口、十组完整检查、全部原始计时、资源、SASS与两轮计数器。build/float4_factorial_2026-11-09保留忽略的二进制及.ncu-rep。experiment.py.txt为实际编排脚本，prepare/measure/profile/record分阶段执行；prepare要求新目录，metadata.json保留源码SHA。
+
+本轮到四组float4对照为止，未继续调整tile、转置padding、双缓冲或自动dispatch。源码和记录尚未提交/push。
+'''
+    path=repo/'notes/29-gemm-float4-factorial.md'; assert not path.exists(); path.write_text(note)
+    data=repo/'notes/data/2026-11-09-gemm-float4-factorial'; data.mkdir(exist_ok=False)
+    for path in root.iterdir():
+        if path.is_file() and path.suffix in ['.json','.txt','.csv']:
+            shutil.copyfile(path,data/path.name)
+    for name in names:
+        for path in (root/name).iterdir():
+            if path.suffix in ['.cu','.txt','.json']:
+                shutil.copyfile(path,data/(f'{name}_{path.name}'+('.txt' if path.suffix=='.cu' else '')))
+    shutil.copyfile(Path(__file__),data/'experiment.py.txt')
+    readme=repo/'README.md'; text=readme.read_text()
+    anchor=next(line for line in text.splitlines() if 'notes/28-gemm-const-block.md' in line)
+    text=text.replace(anchor,anchor+'\n| [29 · float4四组对照](notes/29-gemm-float4-factorial.md) | 有无A转置分别加入float4；2048增量约1.13倍，转置+float4本轮最快 |',1)
+    readme.write_text(text)
+    with (repo/'HANDOFF.md').open('a') as stream:
+        stream.write('\n\n2026-11-09晚：按用户要求完成A转置/未转置×标量/float4四组对照。共同const block、64/32/4、shared显式16B对齐（新增Bs对齐也放入scalar控制，须用本轮数据比较）。发布gemm_self_plain_const.cu、gemm_self_float4_plain.cu、gemm_self_transpose_const_aligned.cu、gemm_self_float4.cu。float4：A global宽读，转置版散写/未转置宽写；B宽读宽写；K/N非4倍数及尾部逐元素回退。四组十组完整CPU检查和五形状抽查通过。2048四组1.541052/1.360919/1.426664/1.267322ms，float4增量未转置1.132倍、转置1.126倍，三进程方向一致，转置+float4最快；其他输入有波动不外推。global加载指令均8388608→2097152，shared存储未转置→2097152、转置→5242880，计算shared加载转置33554432 vs未转置50331648。寄存器56/46/56/39，理论驻留4/5/4/5。notes/29及原始数据已保存，默认与旧候选未覆盖，未继续其他优化，未提交。\n')
+    print(table,resource_table,metric_table,flush=True)
+else:
+    raise ValueError(phase)

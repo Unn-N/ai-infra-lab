@@ -1,0 +1,13 @@
+==WARNING== Note: Running with uncontrolled GPU caches. Profiling results may be inconsistent.
+==WARNING== Note: Running with unmodified GPU clocks. If not controlled otherwise, profiling results may be inconsistent.
+==PROF== Connected to process 1668 (/home/unn/ai-infra-lab/build/padding_as2_2026-11-09/baseline/profile)
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 1668
+==PROF== Connected to process 1681 (/home/unn/ai-infra-lab/build/padding_as2_2026-11-09/baseline/profile)
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 1681
+==PROF== Connected to process 1694 (/home/unn/ai-infra-lab/build/padding_as2_2026-11-09/baseline/profile)
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 1694
+==PROF== Creating report from application replay data: 0%.....100%
+==PROF== Report: /home/unn/ai-infra-lab/build/padding_as2_2026-11-09/baseline_profile2.ncu-rep

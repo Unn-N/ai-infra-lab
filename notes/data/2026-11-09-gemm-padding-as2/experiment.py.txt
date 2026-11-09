@@ -1,0 +1,224 @@
+from pathlib import Path
+import subprocess, json, hashlib, re, statistics, csv, io, shutil, sys
+
+repo = Path('/home/unn/ai-infra-lab')
+root = repo / 'build/padding_as2_2026-11-09'
+oldroot = repo / 'build/padding_as_2026-11-07'
+nvcc = '/usr/local/cuda/bin/nvcc'
+ncu = '/usr/local/cuda/bin/ncu'
+names = ['baseline', 'pad1', 'pad2']
+
+def run(cmd, log):
+    log.with_suffix('.command.json').write_text(json.dumps(cmd, indent=2))
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    log.write_text(result.stdout + result.stderr)
+    if result.returncode:
+        print(result.stdout + result.stderr, flush=True)
+        raise RuntimeError(f'Command failed: {cmd}')
+    return result.stdout
+
+phase = sys.argv[1]
+if phase == 'prepare':
+    root.mkdir(exist_ok=False)
+    baseline = (repo/'gemm/gemm_self_re.cu').read_text()
+    assert hashlib.sha256(baseline.encode()).hexdigest() == 'e0746da45b8a956068ca57632600a1b1c7ac4a3499ee2e2dc0b35218d20f5788'
+    needle = '    __shared__ float As[OUTPUT_TILE][K_TILE];'
+    assert baseline.count(needle) == 1
+    sources = {'baseline': baseline,
+               'pad1': (oldroot/'padA/gemm_self_re.cu').read_text(),
+               'pad2': baseline.replace(needle, '    // [Codex +2 padding 实验] 有效 K 仍为32；行跨度136字节，保持8字节对齐。\n    __shared__ float As[OUTPUT_TILE][K_TILE + 2];')}
+    metadata = {}
+    for name, source in sources.items():
+        folder = root/name
+        folder.mkdir()
+        (folder/'gemm_self_re.cu').write_text(source)
+        for filename in ['gemm_self_bench.cu', 'gemm_self_check.cu']:
+            shutil.copyfile(repo/'gemm'/filename, folder/filename)
+        for filename in ['resource.cu', 'profile.cu']:
+            shutil.copyfile(oldroot/'baseline'/filename, folder/filename)
+        metadata[name] = {'sha256': hashlib.sha256(source.encode()).hexdigest(), 'As_stride': {'baseline':32,'pad1':33,'pad2':34}[name]}
+    (root/'metadata.json').write_text(json.dumps(metadata,indent=2))
+    for name in names:
+        folder = root/name
+        for source, binary in [('gemm_self_bench.cu','bench'),('gemm_self_check.cu','check'),('resource.cu','resource'),('profile.cu','profile')]:
+            run([nvcc,'-O3','-lineinfo','-arch=sm_120',str(folder/source),'-o',str(folder/binary)],folder/f'compile_{binary}.txt')
+        print(f'Compiled {name}',flush=True)
+        print(run([str(folder/'check')],root/f'{name}_check.txt'),flush=True)
+        resource = json.loads(run([str(folder/'resource')],root/f'{name}_resource.txt'))
+        (root/f'{name}_resource.json').write_text(json.dumps(resource,indent=2))
+        sass = run(['/usr/local/cuda/bin/cuobjdump','--dump-sass',str(folder/'bench')],root/f'{name}_sass.txt')
+        counts = {key:len(re.findall(r'\b'+re.escape(key)+r'\s',sass)) for key in ['LDS','LDS.64','LDS.128']}
+        (root/f'{name}_sass_counts.json').write_text(json.dumps(counts,indent=2))
+        print(name,resource,counts,flush=True)
+elif phase == 'measure':
+    runs=[]
+    for rep, order in enumerate([names,['pad2','pad1','baseline'],['pad1','baseline','pad2']],1):
+        for name in order:
+            output=run([str(root/name/'bench')],root/f'{name}_run{rep}.txt')
+            rows=[]
+            for line in output.splitlines():
+                parts=line.split()
+                if len(parts)==9 and all(x.isdigit() for x in parts[:3]):
+                    rows.append({'shape':list(map(int,parts[:3])),'rounds_ms':list(map(float,parts[3:6])),'median_ms':float(parts[6])})
+            assert len(rows)==5,output
+            runs.append({'variant':name,'repeat':rep,'rows':rows})
+            print(name,rep,rows,flush=True)
+    summary=[]
+    for i in range(5):
+        entry={'shape':runs[0]['rows'][i]['shape']}
+        for name in names:
+            matches=[r['rows'][i] for r in runs if r['variant']==name]
+            values=[v for row in matches for v in row['rounds_ms']]
+            entry[name]={'median_ms':statistics.median(values),'all_round_ms':values,'process_medians':[row['median_ms'] for row in matches]}
+        summary.append(entry)
+    (root/'runs.json').write_text(json.dumps(runs,indent=2))
+    (root/'summary.json').write_text(json.dumps(summary,indent=2))
+    print(json.dumps(summary,indent=2),flush=True)
+elif phase == 'focus':
+    for name in names:
+        folder=root/name
+        source=(folder/'gemm_self_bench.cu').read_text()
+        start=source.index('    const int shapes[][3] = {')
+        end=source.index('    };',start)+len('    };')
+        source=source[:start]+'    const int shapes[][3] = {{2048, 2048, 2048}};'+source[end:]
+        source=source.replace('constexpr int warmup = 5;', 'constexpr int warmup = 20;').replace('constexpr int repeats = 20;', 'constexpr int repeats = 100;')
+        anchor='    cudaEvent_t start, stop;'
+        source=source.replace(anchor,'    // Preserve the original benchmark random input sequence for 2048.\n    for (size_t i=0; i<2*size_t(128)*128+2*size_t(512)*512; ++i) (void)value(random);\n\n'+anchor)
+        (folder/'focus.cu').write_text(source)
+        run([nvcc,'-O3','-lineinfo','-arch=sm_120',str(folder/'focus.cu'),'-o',str(folder/'focus')],folder/'compile_focus.txt')
+    rows=[]
+    for rep,order in enumerate([names,['pad2','pad1','baseline'],['pad1','baseline','pad2']],1):
+        for name in order:
+            output=run([str(root/name/'focus')],root/f'{name}_focus{rep}.txt')
+            line=next(line for line in output.splitlines() if len(line.split())==9 and line.split()[:3]==['2048','2048','2048'])
+            parts=line.split()
+            row={'variant':name,'repeat':rep,'rounds_ms':list(map(float,parts[3:6])),'median_ms':float(parts[6])}
+            rows.append(row)
+            print(row,flush=True)
+    summary={name:{'median_ms':statistics.median(v for row in rows if row['variant']==name for v in row['rounds_ms']),'process_medians':[row['median_ms'] for row in rows if row['variant']==name]} for name in names}
+    (root/'focus_runs.json').write_text(json.dumps(rows,indent=2))
+    (root/'focus_summary.json').write_text(json.dumps(summary,indent=2))
+    print(json.dumps(summary,indent=2),flush=True)
+elif phase == 'profile':
+    metrics=['gpu__time_duration.sum','l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum','l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum','l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum','smsp__sass_inst_executed_op_shared_ld.sum','smsp__sass_inst_executed_op_shared_st.sum']
+    results=[]
+    for rep,order in enumerate([names,list(reversed(names))],1):
+        for name in order:
+            tag=f'{name}_profile{rep}'
+            cmd=[ncu,'--replay-mode','application','--cache-control','none','--clock-control','none','--kernel-name','regex:gemm_tiled','--launch-skip','6','--launch-count','1','--metrics',','.join(metrics),'--csv','--print-units','base','--export',str(root/tag),'--force-overwrite',str(root/name/'profile'),'2048','2048','2048']
+            run(cmd,root/f'{tag}_capture.txt')
+            output=run([ncu,'--import',str(root/f'{tag}.ncu-rep'),'--page','raw','--csv','--print-units','base'],root/f'{tag}.csv')
+            row=next(r for r in csv.DictReader(io.StringIO(output)) if r.get('ID')=='0')
+            entry={key:float(row[key].replace(',','')) for key in metrics}
+            entry.update(variant=name,repeat=rep)
+            results.append(entry)
+            print(json.dumps(entry),flush=True)
+    (root/'profile_summary.json').write_text(json.dumps(results,indent=2))
+elif phase == 'record':
+    summary=json.loads((root/'summary.json').read_text())
+    focus=json.loads((root/'focus_summary.json').read_text())
+    profiles=json.loads((root/'profile_summary.json').read_text())
+    assert len(profiles)==6
+    assert (repo/'gemm/gemm_self_re.cu').read_bytes()==(root/'baseline/gemm_self_re.cu').read_bytes()
+    candidate=repo/'gemm/gemm_self_pad2.cu'
+    assert not candidate.exists()
+    shutil.copyfile(root/'pad2/gemm_self_re.cu',candidate)
+    data=repo/'notes/data/2026-11-09-gemm-padding-as2'
+    data.mkdir(exist_ok=False)
+    for path in root.iterdir():
+        if path.is_file() and path.suffix in ['.json','.txt','.csv']:
+            shutil.copyfile(path,data/path.name)
+    for name in names:
+        for path in (root/name).iterdir():
+            if path.suffix in ['.cu','.txt','.json']:
+                filename=f'{name}_{path.name}'+('.txt' if path.suffix=='.cu' else '')
+                shutil.copyfile(path,data/filename)
+    shutil.copyfile(Path(__file__),data/'experiment.py.txt')
+    table='| M, N, K | 原版 ms | As +1 ms | As +2 ms |\n|---|---:|---:|---:|\n'
+    for row in summary:
+        table+='| '+', '.join(map(str,row['shape']))+' | '+' | '.join(f"{row[name]['median_ms']:.6f}" for name in names)+' |\n'
+    focus_table='| 版本 | 九轮中位数 ms | 三次进程各自中位数 ms |\n|---|---:|---|\n'
+    for name in names:
+        focus_table+=f"| {name} | {focus[name]['median_ms']:.6f} | "+', '.join(f'{v:.6f}' for v in focus[name]['process_medians'])+' |\n'
+    metrics=[('shared 读取 bank conflicts','l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum'),('动态 shared 加载 warp 指令','smsp__sass_inst_executed_op_shared_ld.sum'),('shared load wavefronts','l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum')]
+    metric_table='| 指标 | 原版 | As +1 | As +2 |\n|---|---:|---:|---:|\n'
+    for label,key in metrics:
+        spans=[]
+        for name in names:
+            values=[r[key] for r in profiles if r['variant']==name]
+            spans.append(f'{min(values):,.0f}—{max(values):,.0f}')
+        metric_table+='| '+label+' | '+' | '.join(spans)+' |\n'
+    note='''# 23 · As 加两列：恢复宽加载，整体收益尚不明显
+
+2026-11-09，承接 notes/21。用户预测 +2 可以改善冲突，并在理解 float2 对齐后要求单独尝试。只将默认64/32/4单缓冲的 As 行宽32改成34；Bs、有效数据、输出分工、K循环和乘加逻辑不变。没有显式 float2，也没有修改其他布局。
+
+## 假设及实际代码
+
+As 每行136字节，保持8字节对齐；按32位标量访问，第一个 warp 的两组16线程读取相隔4行的地址，bank差从原版0变为8，+1则为4。该具体访问中两种padding都能错开，不能仅因步长34为偶数就断言其冲突改善必然弱于33。
+
+候选保存为 gemm/gemm_self_pad2.cu。默认 gemm/gemm_self_re.cu 继续保留未padding基线；两份代码的有效计算相同。用户尚未要求提交或push。
+
+## 正确性、资源与生成指令
+
+三版均重新编译，七组逐输出 CPU double 检查全部通过；所有普通计时和补充计时的64点CPU double抽查也通过。Compute Sanitizer先前被Windows WDDM调试接口阻挡，本次未重试，不声称通过竞争或同步检测。
+
+| 项目 | 原版 | As +1 | As +2 |
+|---|---:|---:|---:|
+| static shared/block | 16384 B | 16640 B | 16896 B |
+| 寄存器/线程 | 62 | 56 | 62 |
+| local/线程 | 0 B | 0 B | 0 B |
+| 理论 block/SM | 4 | 4 | 4 |
+| 循环中 LDS.64 | 4 | 2 | 4 |
+| 循环中标量 LDS | 0 | 4 | 0 |
+| 循环中 LDS.128 | 2 | 2 | 2 |
+| 合计 shared 加载指令 | 6 | 8 | 6 |
+
++2确实恢复了原版的宽加载组合。两轮实际动态计数也确认加载指令回到50,331,648，与原版相同。
+
+## 五组输入同期计时
+
+三版同日重编，-O3 -lineinfo -arch=sm_120；沿用固定随机输入、CUDA events、每进程5次预热、3轮每轮20次启动。每版3个进程，共9轮，表中为九轮批量平均耗时的中位数。不计分配/拷贝/校验，相同缓冲不清L2。
+
+进程顺序：baseline、pad1、pad2；pad2、pad1、baseline；pad1、baseline、pad2。保留全部原始数据及异常长轮次，没有选择性删除。短任务有明显噪声，2048绝对耗时也不同于11月7日，因此只作本轮同期比较。
+
+'''+table+'''
+## 2048补充长批量计时
+
+由于首轮2048原版与+2仅差约0.1%，且波动明显，补充20次预热、3轮每轮100次启动。仍每版3进程交错，输入数值序列与原五形状入口的2048完全一致；其他计时条件不变。没有修改 kernel。
+
+'''+focus_table+f'''
+补充计时中+2较原版中位耗时低约{(1-focus['pad2']['median_ms']/focus['baseline']['median_ms'])*100:.2f}%，但各进程结果重叠，第三轮进程+2慢于原版。结合首轮近乎持平，未得到稳定净加速的证据。512与长方形输入本轮+2也慢于原版，不能替换默认版本作为普遍改进。
+
+## 2048硬件计数器
+
+沿用独立profile入口，六次启动后采集第七次。Nsight Compute application replay、cache-control none、clock-control none；三版正序和反序各一次。只收集六项指标，精确命令与报告CSV留存。Profiler中的单次耗时波动明显，不作为普通计时的替代。
+
+'''+metric_table+'''
++1、+2读取冲突都比原版少约99.9%，两者残余冲突处于相近水平，当前证据不支持“+2明显弱于+1”的预测。+2动态shared加载指令与原版相同，wavefront总量比原版约少25%。然而这些局部改善没有表现为稳定的整体加速。
+
+## 结论与边界
+
+这次验证了对齐推理：136B行跨度使宽加载恢复，同时保留明显的bank冲突改善。并未验证“恢复宽加载后必然明显加速”。原版存在冲突，并不代表消掉该项就能同比缩短总耗时。尚未唯一定位整个kernel的主要吞吐约束，也未将全部性能差异归因某一项指标。
+
+实验到+2为止；未继续float2重写、Bs padding、swizzle或其他参数。默认源码保持原版，+2作为独立可读学习候选保存。
+
+## 复现与原始数据
+
+notes/data/2026-11-09-gemm-padding-as2 保存三版实际源码、共同测量/检查/profile/resource入口、编译命令、普通计时、补充计时、资源、SASS及两轮计数器。build/padding_as2_2026-11-09 的可执行文件及.ncu-rep为忽略的二进制。
+
+experiment.py.txt为本轮实际编排脚本快照；prepare、measure、profile、focus、record各阶段命令需在WSL中运行，prepare要求目标实验目录尚不存在。也可恢复各版cu.txt快照并使用compile_*.command.json中的原编译参数。源码快照SHA见metadata.json。
+'''
+    path=repo/'notes/23-gemm-padding-as2.md'
+    assert not path.exists()
+    path.write_text(note)
+    readme=repo/'README.md'
+    text=readme.read_text()
+    anchor=next(line for line in text.splitlines() if 'notes/22-gemm-day-end.md' in line)
+    text=text.replace(anchor,anchor+'\n| [23 · As +2 padding](notes/23-gemm-padding-as2.md) | 恢复宽加载并减少bank冲突；2048未测出稳定净加速 |',1)
+    readme.write_text(text)
+    handoff=repo/'HANDOFF.md'
+    with handoff.open('a') as stream:
+        stream.write('\n\n2026-11-09：按用户要求完成As +2单项实验。64/32/4单缓冲，三版同期校验/计时/计数器/SASS。+2恢复4条LDS.64+2条LDS.128、62regs、4block/SM；读取bank冲突与+1一样减少约99.9%。五形状2048原/+1/+2为1.914613/1.976795/1.912701ms，补充长批量为1.883676/1.918065/1.872859ms；差异小且结果重叠，未证实稳定净加速。默认re保留无padding，独立候选gemm/gemm_self_pad2.cu，记录notes/23和可复现文本原始数据。未继续float2或其他优化，尚未提交。\n')
+    print('Recorded experiment, preserved unchanged baseline and standalone +2 candidate.',flush=True)
+else:
+    raise ValueError(phase)

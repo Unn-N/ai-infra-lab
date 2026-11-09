@@ -1,5 +1,7 @@
 # ai-infra-lab
 
+> **2026-11-09 收尾：** 已完成A局部转置、严格FP32参照、编译期线程分工及float4四组实验；最新候选、验证边界和下次亲手编码入口见 [当日收尾](notes/30-gemm-day-end.md)。
+
 > **2026-11-07 收尾：** 双缓冲、驻留、1024线程与padding实验已整理；当前版本、验证边界及续学入口见 [当日收尾](notes/22-gemm-day-end.md)。
 
 > **2026-11-07 里程碑：** 已完成基础 GEMM、寄存器分块实现和多组性能对照。当前成果、验证范围与复现命令见 [里程碑记录](notes/12-gemm-milestone.md)。
@@ -19,8 +21,9 @@
 | 逐行 softmax（朴素版） | ✅ | `8192×8192` 达 **85.5%** 显存带宽 |
 | 逐行 softmax（warp 版） | ✅ | `N=128` 从 **19% → 93%**，**4.96×** |
 | naive Softmax 正确性测试 | ✅ | 2026-11-06 从源码重编译，5/5 PASS；不覆盖全部独立优化版本 |
-| GEMM 基准 | 🚧 | 历史上已运行 naive / tiled / cuBLAS；性能瓶颈待验证 |
+| GEMM 基准与参照 | ✅ | 已有固定输入检查/计时及严格FP32 cuBLAS同期参照；整体唯一主瓶颈仍未确定 |
 | GEMM 首个实验里程碑 | ✅ | 基础实现 → TILE 对照 → 每线程 2×2 / 4×4；当前七组 CPU 全输出检查通过，逐尺寸性能与退步均保留 |
+| GEMM A转置与float4 | ✅ | 四组十用例检查通过；2048的float4增量约1.13倍，小输入与回退路径另行观察 |
 
 ### v2 的 4.96× 是怎么来的
 
@@ -58,10 +61,13 @@ softmax/
 gemm/
   gemm_bench.cu        GEMM 基准（朴素 / tiled / cuBLAS 对照）
   gemm_self.cu         原自写 tiled 基线、host 调用与手算小例子
-  gemm_self_re.cu      当前工作副本：64×64 输出块、16×16 线程、每线程 4×4 输出
+  gemm_self_re.cu      默认对照：64×64 输出块、16×16 线程、每线程 4×4 输出
   gemm_self_double_buffer.cu  独立双缓冲实验：当前32×32输出、每线程2×2，历史64版本有快照
   gemm_self_check.cu   当前 re 版本的七组 CPU 全输出正确性检查
   gemm_self_bench.cu   Codex 编写的独立测量入口，引用 gemm_self_re.cu
+  gemm_self_float4.cu  最新有收益候选：A局部转置、float4搬运、编译期线程分工
+  gemm_self_float4_plain.cu  未转置的float4对照；其余独立候选见notes/30
+  gemm_reference_bench.cu    严格FP32 cuBLAS与学习版的参照测量入口
 notes/                 实验记录
 ```
 
@@ -105,6 +111,14 @@ nvcc -O3 -arch=sm_120 gemm/gemm_self_bench.cu -o build/gemm_self_bench && ./buil
 | [20 · 1024线程实验](notes/20-gemm-block1024.md) | 每线程2×2/4×4、输出64/128的单缓冲同期对照 |
 | [21 · As padding](notes/21-gemm-padding-as.md) | +1减少读取冲突，但对齐变化使加载指令增多、性能回退 |
 | [22 · 当日收尾](notes/22-gemm-day-end.md) | 当前版本、实验索引、验证边界与续学入口 |
+| [23 · As +2 padding](notes/23-gemm-padding-as2.md) | 恢复宽加载并减少bank冲突；2048未测出稳定净加速 |
+| [24 · 调度与指令诊断](notes/24-gemm-scheduler-diagnosis.md) | 发射空缺、shared队列/读取等待与搬运辅助指令的源码关联 |
+| [25 · A tile局部转置](notes/25-gemm-transpose-a.md) | 计算取数连续且宽加载减少；2048同期约1.085倍加速，写冲突增加 |
+| [26 · K_TILE扩大到64](notes/26-gemm-k-tile64.md) | 单block shared翻倍、驻留减半；2048本轮耗时增加约15.7% |
+| [27 · 性能参照与理想计算尺度](notes/27-gemm-reference-anchor.md) | 严格FP32 cuBLAS同期约快1.78倍；指令总量对照支持检查辅助指令成本 |
+| [28 · 编译期线程分工](notes/28-gemm-const-block.md) | 动态指令减少约7.85%，该轮2048普通计时未加速 |
+| [29 · float4四组对照](notes/29-gemm-float4-factorial.md) | 有无A转置分别加入float4；2048增量约1.13倍，转置+float4本轮最快 |
+| [30 · 本日收尾](notes/30-gemm-day-end.md) | 最新候选、实验索引、验证范围与用户亲手编码的续学入口 |
 
 **编译产物统一输出到 `build/`**，源码目录保持干净。`build/` 已在 `.gitignore` 里，不用每次想“这个要不要提交”。
 
@@ -133,3 +147,6 @@ nvcc -O3 -arch=sm_120 gemm/gemm_self_bench.cu -o build/gemm_self_bench && ./buil
 - [ ] 继续给自写 GEMM 加解释注释，理解 Codex 标注的补充与坐标修正；见 [学习记录](notes/06-gemm-tiling.md)
 
 - [x] 完成首轮 GEMM 寄存器分块与性能实验里程碑；保留原始数据和独立正确性入口
+
+- [x] 完成GEMM局部转置、K64、严格FP32参照、编译期线程分工与float4四组对照，见notes/23—30
+- [ ] 下次由用户亲手写A的float4读取与转置写入，Codex先提示/review，见notes/30

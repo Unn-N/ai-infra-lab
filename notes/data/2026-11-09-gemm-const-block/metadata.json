@@ -1,0 +1,18 @@
+{
+  "runtime": {
+    "sha256": "8a1cdb9617227d1b81f858df4f90607b0ec4657fc663f2cab84383207309be14",
+    "output_tile": 64,
+    "K_tile": 32,
+    "thread_tile": 4,
+    "block_side": 16,
+    "block_threads": 256
+  },
+  "constant": {
+    "sha256": "44808b7004cb4545336c20340cf90587439cd5d3aaad1cd7479f47f5457ba660",
+    "output_tile": 64,
+    "K_tile": 32,
+    "thread_tile": 4,
+    "block_side": 16,
+    "block_threads": 256
+  }
+}

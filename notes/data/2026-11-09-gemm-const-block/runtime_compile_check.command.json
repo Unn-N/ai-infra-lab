@@ -1,0 +1,9 @@
+[
+  "/usr/local/cuda/bin/nvcc",
+  "-O3",
+  "-lineinfo",
+  "-arch=sm_120",
+  "/home/unn/ai-infra-lab/build/const_block_2026-11-09/runtime/gemm_self_check.cu",
+  "-o",
+  "/home/unn/ai-infra-lab/build/const_block_2026-11-09/runtime/check"
+]

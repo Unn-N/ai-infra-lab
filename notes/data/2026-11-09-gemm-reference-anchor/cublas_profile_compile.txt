@@ -1,0 +1,5 @@
+/home/unn/ai-infra-lab/build/reference_anchor_2026-11-09/profile.cu(22): warning #177-D: variable "block" was declared but never referenced
+      const dim3 block(OUTPUT_TILE/THREAD_TILE,OUTPUT_TILE/THREAD_TILE);
+                 ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"

@@ -1,0 +1,180 @@
+{
+  "repeat": 2,
+  "total": 562184192,
+  "lines": [
+    {
+      "line": 79,
+      "source": "acc[i][j] += a[i] * b[j];",
+      "inst": 276824064,
+      "samples": 31924
+    },
+    {
+      "line": 75,
+      "source": "for (int i = 0; i < THREAD_TILE; ++i) a[i] = As[local_row + i][k];",
+      "inst": 61341696,
+      "samples": 49111
+    },
+    {
+      "line": 58,
+      "source": "As[r][k] = (block_row + r < M && k0 + k < K)",
+      "inst": 42885120,
+      "samples": 25224
+    },
+    {
+      "line": 65,
+      "source": "Bs[k][c] = (k0 + k < K && block_col + c < N)",
+      "inst": 37748736,
+      "samples": 19018
+    },
+    {
+      "line": 66,
+      "source": "? B[size_t(k0 + k) * N + block_col + c] : 0.0f;",
+      "inst": 35651584,
+      "samples": 15966
+    },
+    {
+      "line": 59,
+      "source": "? A[size_t(block_row + r) * K + k0 + k] : 0.0f;",
+      "inst": 26214400,
+      "samples": 17220
+    },
+    {
+      "line": 76,
+      "source": "for (int j = 0; j < THREAD_TILE; ++j) b[j] = Bs[k][local_col + j];",
+      "inst": 25165824,
+      "samples": 9811
+    },
+    {
+      "line": 72,
+      "source": "for (int k = 0; k < K_TILE; ++k) {",
+      "inst": 16777216,
+      "samples": 618
+    },
+    {
+      "line": 55,
+      "source": "for (int index = tid; index < OUTPUT_TILE * K_TILE; index += threads) {",
+      "inst": 8970240,
+      "samples": 2402
+    },
+    {
+      "line": 62,
+      "source": "for (int index = tid; index < K_TILE * OUTPUT_TILE; index += threads) {",
+      "inst": 8388608,
+      "samples": 915
+    },
+    {
+      "line": 64,
+      "source": "const int c = index % OUTPUT_TILE;",
+      "inst": 5242880,
+      "samples": 1305
+    },
+    {
+      "line": 56,
+      "source": "const int r = index / K_TILE;",
+      "inst": 4194304,
+      "samples": 391
+    },
+    {
+      "line": 57,
+      "source": "const int k = index % K_TILE;",
+      "inst": 4194304,
+      "samples": 1096
+    },
+    {
+      "line": 63,
+      "source": "const int k = index / OUTPUT_TILE;",
+      "inst": 4194304,
+      "samples": 904
+    },
+    {
+      "line": 53,
+      "source": "for (int k0 = 0; k0 < K; k0 += K_TILE) {",
+      "inst": 1671168,
+      "samples": 2885
+    },
+    {
+      "line": 83,
+      "source": "__syncthreads();  // \u6240\u6709\u7ebf\u7a0b\u7528\u5b8c\u672c\u8f6e\u8f93\u5165\uff0c\u518d\u5141\u8bb8\u8986\u76d6 shared\u3002",
+      "inst": 1056768,
+      "samples": 5743
+    },
+    {
+      "line": 68,
+      "source": "__syncthreads();  // \u4e24\u4e2a\u8f93\u5165\u5757\u90fd\u642c\u9f50\u540e\uff0c\u624d\u5f00\u59cb\u8bfb\u53d6\u3002",
+      "inst": 1048576,
+      "samples": 249
+    },
+    {
+      "line": 90,
+      "source": "C[size_t(row + i) * N + col + j] = acc[i][j];",
+      "inst": 294912,
+      "samples": 516
+    },
+    {
+      "line": 89,
+      "source": "if (row + i < M && col + j < N) {",
+      "inst": 196608,
+      "samples": 22
+    },
+    {
+      "line": 52,
+      "source": "const int threads = blockDim.x * blockDim.y;",
+      "inst": 24576,
+      "samples": 9
+    },
+    {
+      "line": 39,
+      "source": "const int block_row = blockIdx.y * OUTPUT_TILE;",
+      "inst": 16384,
+      "samples": 14
+    },
+    {
+      "line": 40,
+      "source": "const int block_col = blockIdx.x * OUTPUT_TILE;",
+      "inst": 16384,
+      "samples": 1
+    },
+    {
+      "line": 51,
+      "source": "const int tid = ty * blockDim.x + tx;",
+      "inst": 16384,
+      "samples": 1
+    },
+    {
+      "line": 32,
+      "source": "__global__ void gemm_tiled(const float* __restrict__ A, const float* __restrict__ B,",
+      "inst": 8192,
+      "samples": 37
+    },
+    {
+      "line": 37,
+      "source": "const int tx = threadIdx.x;",
+      "inst": 8192,
+      "samples": 9
+    },
+    {
+      "line": 38,
+      "source": "const int ty = threadIdx.y;",
+      "inst": 8192,
+      "samples": 42
+    },
+    {
+      "line": 46,
+      "source": "const int row = block_row + local_row;",
+      "inst": 8192,
+      "samples": 16
+    },
+    {
+      "line": 47,
+      "source": "const int col = block_col + local_col;",
+      "inst": 8192,
+      "samples": 9
+    },
+    {
+      "line": 94,
+      "source": "}",
+      "inst": 8192,
+      "samples": 148
+    }
+  ]
+}

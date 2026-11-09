@@ -1,0 +1,11 @@
+[
+  "/usr/local/cuda/bin/nvcc",
+  "-O3",
+  "-lineinfo",
+  "-arch=sm_120",
+  "-DREFERENCE_CUBLAS=1",
+  "/home/unn/ai-infra-lab/build/reference_anchor_2026-11-09/profile.cu",
+  "-lcublas",
+  "-o",
+  "/home/unn/ai-infra-lab/build/reference_anchor_2026-11-09/cublas_profile"
+]

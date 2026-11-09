@@ -1,0 +1,14 @@
+{
+  "baseline": {
+    "sha256": "e0746da45b8a956068ca57632600a1b1c7ac4a3499ee2e2dc0b35218d20f5788",
+    "As_stride": 32
+  },
+  "pad1": {
+    "sha256": "69fcee96b67f8069deb482876e31a9be3d1bdf99d11ce244deba8938c2d38573",
+    "As_stride": 33
+  },
+  "pad2": {
+    "sha256": "1a0ae430a68893101b61e3d4d94a6dee33617cbb133b6fbf31e880e17070a6a3",
+    "As_stride": 34
+  }
+}

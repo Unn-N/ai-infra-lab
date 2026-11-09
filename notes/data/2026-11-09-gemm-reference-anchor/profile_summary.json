@@ -1,0 +1,62 @@
+[
+  {
+    "variant": "self",
+    "repeat": 1,
+    "kernels": [
+      {
+        "name": "gemm_tiled(const float *, const float *, float *, int, int, int)",
+        "gpu__time_duration.sum": 1759296.0,
+        "smsp__inst_executed.sum": 532801176.0,
+        "smsp__issue_active.avg.pct_of_peak_sustained_active": 77.16,
+        "sm__inst_executed_pipe_fma.avg.pct_of_peak_sustained_elapsed": 40.76,
+        "sm__inst_executed_pipe_lsu.avg.pct_of_peak_sustained_elapsed": 54.29,
+        "sm__cycles_elapsed.avg.per_second": 2202314969.55
+      }
+    ]
+  },
+  {
+    "variant": "cublas",
+    "repeat": 1,
+    "kernels": [
+      {
+        "name": "void Kernel2<cutlass_80_simt_sgemm_256x128_8x4_nn_align1>(Params)",
+        "gpu__time_duration.sum": 733120.0,
+        "smsp__inst_executed.sum": 303979904.0,
+        "smsp__issue_active.avg.pct_of_peak_sustained_active": 78.87,
+        "sm__inst_executed_pipe_fma.avg.pct_of_peak_sustained_elapsed": 69.33,
+        "sm__inst_executed_pipe_lsu.avg.pct_of_peak_sustained_elapsed": 37.73,
+        "sm__cycles_elapsed.avg.per_second": 2772412599.57
+      }
+    ]
+  },
+  {
+    "variant": "cublas",
+    "repeat": 2,
+    "kernels": [
+      {
+        "name": "void Kernel2<cutlass_80_simt_sgemm_256x128_8x4_nn_align1>(Params)",
+        "gpu__time_duration.sum": 730208.0,
+        "smsp__inst_executed.sum": 303979904.0,
+        "smsp__issue_active.avg.pct_of_peak_sustained_active": 78.89,
+        "sm__inst_executed_pipe_fma.avg.pct_of_peak_sustained_elapsed": 69.39,
+        "sm__inst_executed_pipe_lsu.avg.pct_of_peak_sustained_elapsed": 37.76,
+        "sm__cycles_elapsed.avg.per_second": 2781193509.25
+      }
+    ]
+  },
+  {
+    "variant": "self",
+    "repeat": 2,
+    "kernels": [
+      {
+        "name": "gemm_tiled(const float *, const float *, float *, int, int, int)",
+        "gpu__time_duration.sum": 1780384.0,
+        "smsp__inst_executed.sum": 532800777.0,
+        "smsp__issue_active.avg.pct_of_peak_sustained_active": 77.41,
+        "sm__inst_executed_pipe_fma.avg.pct_of_peak_sustained_elapsed": 40.53,
+        "sm__inst_executed_pipe_lsu.avg.pct_of_peak_sustained_elapsed": 53.99,
+        "sm__cycles_elapsed.avg.per_second": 2188095845.24
+      }
+    ]
+  }
+]

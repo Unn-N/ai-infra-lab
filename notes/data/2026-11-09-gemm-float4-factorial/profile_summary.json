@@ -1,0 +1,82 @@
+[
+  {
+    "gpu__time_duration.sum": 1379968.0,
+    "smsp__inst_executed.sum": 508264448.0,
+    "smsp__sass_inst_executed_op_global_ld.sum": 8388608.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 50331648.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 1023633.0,
+    "variant": "plain_scalar",
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 1234112.0,
+    "smsp__inst_executed.sum": 447479808.0,
+    "smsp__sass_inst_executed_op_global_ld.sum": 2097152.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 50331648.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 2097152.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 842495.0,
+    "variant": "plain_float4",
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 1291712.0,
+    "smsp__inst_executed.sum": 489414656.0,
+    "smsp__sass_inst_executed_op_global_ld.sum": 8388608.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 33554432.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 14320773.0,
+    "variant": "trans_scalar",
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 1165728.0,
+    "smsp__inst_executed.sum": 436436992.0,
+    "smsp__sass_inst_executed_op_global_ld.sum": 2097152.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 33554432.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 5242880.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 13788519.0,
+    "variant": "trans_float4",
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 1165024.0,
+    "smsp__inst_executed.sum": 436436992.0,
+    "smsp__sass_inst_executed_op_global_ld.sum": 2097152.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 33554432.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 5242880.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 13785031.0,
+    "variant": "trans_float4",
+    "repeat": 2
+  },
+  {
+    "gpu__time_duration.sum": 1291968.0,
+    "smsp__inst_executed.sum": 489414656.0,
+    "smsp__sass_inst_executed_op_global_ld.sum": 8388608.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 33554432.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 14319836.0,
+    "variant": "trans_scalar",
+    "repeat": 2
+  },
+  {
+    "gpu__time_duration.sum": 1229792.0,
+    "smsp__inst_executed.sum": 447479808.0,
+    "smsp__sass_inst_executed_op_global_ld.sum": 2097152.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 50331648.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 2097152.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 851959.0,
+    "variant": "plain_float4",
+    "repeat": 2
+  },
+  {
+    "gpu__time_duration.sum": 1378880.0,
+    "smsp__inst_executed.sum": 508264448.0,
+    "smsp__sass_inst_executed_op_global_ld.sum": 8388608.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 50331648.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 1020589.0,
+    "variant": "plain_scalar",
+    "repeat": 2
+  }
+]

@@ -1,0 +1,20 @@
+[
+  "/usr/local/cuda/bin/ncu",
+  "--profile-from-start",
+  "off",
+  "--replay-mode",
+  "application",
+  "--cache-control",
+  "none",
+  "--clock-control",
+  "none",
+  "--metrics",
+  "gpu__time_duration.sum,smsp__inst_executed.sum,smsp__issue_active.avg.pct_of_peak_sustained_active,sm__inst_executed_pipe_fma.avg.pct_of_peak_sustained_elapsed,sm__inst_executed_pipe_lsu.avg.pct_of_peak_sustained_elapsed,sm__cycles_elapsed.avg.per_second",
+  "--export",
+  "/home/unn/ai-infra-lab/build/reference_anchor_2026-11-09/cublas_profile1",
+  "--force-overwrite",
+  "/home/unn/ai-infra-lab/build/reference_anchor_2026-11-09/cublas_profile",
+  "2048",
+  "2048",
+  "2048"
+]

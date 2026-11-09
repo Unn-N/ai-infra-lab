@@ -1,0 +1,62 @@
+[
+  {
+    "gpu__time_duration.sum": 1432768.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 33591281.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 930088.0,
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 134254577.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 50331648.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "variant": "baseline",
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 1891712.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 33605.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 779966.0,
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 117474117.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 67108864.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "variant": "pad1",
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 3508320.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 32694.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 828429.0,
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 100695990.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 50331648.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "variant": "pad2",
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 2027264.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 35014.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 894341.0,
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 100698310.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 50331648.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "variant": "pad2",
+    "repeat": 2
+  },
+  {
+    "gpu__time_duration.sum": 1476608.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 35124.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 803050.0,
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 117475636.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 67108864.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "variant": "pad1",
+    "repeat": 2
+  },
+  {
+    "gpu__time_duration.sum": 1436800.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 33599609.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 943256.0,
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 134262905.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 50331648.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "variant": "baseline",
+    "repeat": 2
+  }
+]

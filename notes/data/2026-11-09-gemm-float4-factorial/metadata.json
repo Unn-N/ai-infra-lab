@@ -1,0 +1,42 @@
+{
+  "plain_scalar": {
+    "sha256": "9f7f801db4e6283091c93d0412871dd89bf7f5267a69c871d01d3e83180e03cb",
+    "transpose_A": false,
+    "float4_transport": false,
+    "output_tile": 64,
+    "K_tile": 32,
+    "thread_tile": 4,
+    "block_threads": 256,
+    "shared_alignment": 16
+  },
+  "plain_float4": {
+    "sha256": "6461ca993485f259c600f156b6a63966670e45e6d38a8a8c08e49b02eea832cb",
+    "transpose_A": false,
+    "float4_transport": true,
+    "output_tile": 64,
+    "K_tile": 32,
+    "thread_tile": 4,
+    "block_threads": 256,
+    "shared_alignment": 16
+  },
+  "trans_scalar": {
+    "sha256": "65f9d1b753f9660e0423550f08f44c03eccf7e7b463f4449d8784ffe993ef7b2",
+    "transpose_A": true,
+    "float4_transport": false,
+    "output_tile": 64,
+    "K_tile": 32,
+    "thread_tile": 4,
+    "block_threads": 256,
+    "shared_alignment": 16
+  },
+  "trans_float4": {
+    "sha256": "4ee9339437cf7c087a23a7935e0f199aa0deb7092a22b750be72ac6a4a280801",
+    "transpose_A": true,
+    "float4_transport": true,
+    "output_tile": 64,
+    "K_tile": 32,
+    "thread_tile": 4,
+    "block_threads": 256,
+    "shared_alignment": 16
+  }
+}

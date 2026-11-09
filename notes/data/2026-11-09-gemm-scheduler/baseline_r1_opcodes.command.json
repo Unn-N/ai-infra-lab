@@ -1,0 +1,14 @@
+[
+  "/usr/local/cuda/bin/ncu",
+  "--import",
+  "/home/unn/ai-infra-lab/build/scheduler_2026-11-09/baseline_r1.ncu-rep",
+  "--page",
+  "raw",
+  "--csv",
+  "--metrics",
+  "sass__inst_executed_per_opcode,sass__inst_executed_per_opcode_category",
+  "--print-metric-instances",
+  "details",
+  "--print-units",
+  "base"
+]

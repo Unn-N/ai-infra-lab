@@ -1,0 +1,14 @@
+[
+  "/usr/local/cuda/bin/ncu",
+  "--import",
+  "/home/unn/ai-infra-lab/build/scheduler_2026-11-09/source_r1.ncu-rep",
+  "--page",
+  "source",
+  "--print-source",
+  "cuda,sass",
+  "--csv",
+  "--metrics",
+  "inst_executed,smsp__pcsamp_sample_count",
+  "--print-metric-instances",
+  "details"
+]

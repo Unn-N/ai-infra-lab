@@ -1,0 +1,9 @@
+[
+  "/usr/local/cuda/bin/nvcc",
+  "-O3",
+  "-lineinfo",
+  "-arch=sm_120",
+  "/home/unn/ai-infra-lab/build/float4_factorial_2026-11-09/plain_scalar/resource.cu",
+  "-o",
+  "/home/unn/ai-infra-lab/build/float4_factorial_2026-11-09/plain_scalar/resource"
+]

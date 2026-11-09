@@ -1,0 +1,14 @@
+GPU: NVIDIA GeForce RTX 5070
+Mode: FP32, row-major, OUTPUT_TILE=64 K_TILE=32 THREAD_TILE=4; same buffers, no L2 flush
+Timing: 5 warmups; 3 rounds x 20 launches; CUDA events
+Excluded: allocations, CPU/GPU copies, correctness checks
+Check: 64 sampled outputs vs CPU double, BEFORE timing
+
+    M     N     K   round1_ms   round2_ms   round3_ms   median_ms   GFLOP/s   sampled_maxerr
+  128   128   128    0.010859    0.012941    0.079104    0.012941     324.1         2.93e-06
+  512   512   512    0.043014    0.043330    0.043357    0.043330    6195.2         7.11e-06
+ 2048  2048  2048    1.714118    1.989013    1.869264    1.869264    9190.7         3.19e-05
+  128  1024   512    0.033757    0.033594    0.033818    0.033757    3976.0         9.63e-06
+  127   513   257    0.020778    0.021307    0.021771    0.021307    1571.7         4.76e-06
+
+All sampled checks PASS. Timings describe this repeated-buffer workload only.

@@ -1,0 +1,5 @@
+/home/unn/ai-infra-lab/build/reference_anchor_2026-11-09/gemm_reference_bench.cu(59): warning #177-D: function "launch_reference" was declared but never referenced
+  static void launch_reference(cublasHandle_t handle, const float* A, const float* B,
+              ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"

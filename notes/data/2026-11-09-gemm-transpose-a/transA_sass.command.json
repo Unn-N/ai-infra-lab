@@ -1,0 +1,5 @@
+[
+  "/usr/local/cuda/bin/cuobjdump",
+  "--dump-sass",
+  "/home/unn/ai-infra-lab/build/transpose_a_2026-11-09/transA/bench"
+]

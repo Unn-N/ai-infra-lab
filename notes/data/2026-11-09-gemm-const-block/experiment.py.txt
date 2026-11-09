@@ -1,0 +1,190 @@
+from pathlib import Path
+import subprocess, json, hashlib, re, statistics, csv, io, shutil, sys
+
+repo=Path('/home/unn/ai-infra-lab')
+root=repo/'build/const_block_2026-11-09'
+previous=repo/'build/transpose_a_2026-11-09/transA'
+nvcc='/usr/local/cuda/bin/nvcc'
+names=['runtime','constant']
+
+def run(cmd,path):
+    path.with_suffix('.command.json').write_text(json.dumps(cmd,indent=2))
+    r=subprocess.run(cmd,capture_output=True,text=True)
+    path.write_text(r.stdout+r.stderr)
+    if r.returncode:
+        print(r.stdout+r.stderr,flush=True)
+        raise RuntimeError(cmd)
+    return r.stdout
+
+phase=sys.argv[1]
+if phase=='prepare':
+    root.mkdir(exist_ok=False)
+    baseline=(repo/'gemm/gemm_self_transpose_a.cu').read_text()
+    assert hashlib.sha256(baseline.encode()).hexdigest()=='8a1cdb9617227d1b81f858df4f90607b0ec4657fc663f2cab84383207309be14'
+    anchor='// ===== Codex 补充结束 ====='
+    candidate=baseline.replace(anchor,'''// [Codex 编译期分工实验] 与当前启动方式一致，由输出分工推导固定线程形状。
+constexpr int BLOCK_SIDE = OUTPUT_TILE / THREAD_TILE;  // 16
+constexpr int BLOCK_THREADS = BLOCK_SIDE * BLOCK_SIDE; // 256
+'''+anchor,1)
+    old='    const int tid = ty * blockDim.x + tx;\n    const int threads = blockDim.x * blockDim.y;'
+    assert candidate.count(old)==1
+    candidate=candidate.replace(old,'''    // [Codex 编译期分工实验] 本kernel按BLOCK_SIDE×BLOCK_SIDE启动；让编译器看清搬运步长。
+    const int tid = ty * BLOCK_SIDE + tx;''')
+    assert candidate.count('index += threads')==2
+    candidate=candidate.replace('index += threads','index += BLOCK_THREADS')
+    launch='    dim3 block(OUTPUT_TILE / THREAD_TILE, OUTPUT_TILE / THREAD_TILE);'
+    assert candidate.count(launch)==1
+    candidate=candidate.replace(launch,'    dim3 block(BLOCK_SIDE, BLOCK_SIDE); // [Codex] 与编译期搬运分工保持一致。')
+    metadata={}
+    for name,source in [('runtime',baseline),('constant',candidate)]:
+        folder=root/name; folder.mkdir()
+        (folder/'gemm_self_re.cu').write_text(source)
+        for filename in ['gemm_self_bench.cu','gemm_self_check.cu','resource.cu','profile.cu']:
+            text=(previous/filename).read_text()
+            if filename=='gemm_self_bench.cu':
+                text=text.replace('constexpr int warmup = 5;','constexpr int warmup = 20;').replace('constexpr int repeats = 20;','constexpr int repeats = 100;')
+            (folder/filename).write_text(text)
+        metadata[name]={'sha256':hashlib.sha256(source.encode()).hexdigest(),'output_tile':64,'K_tile':32,'thread_tile':4,'block_side':16,'block_threads':256}
+        for sourcefile,binary in [('gemm_self_bench.cu','bench'),('gemm_self_check.cu','check'),('resource.cu','resource'),('profile.cu','profile')]:
+            run([nvcc,'-O3','-lineinfo','-arch=sm_120',str(folder/sourcefile),'-o',str(folder/binary)],folder/f'compile_{binary}.txt')
+        print('Compiled',name,flush=True)
+        print(run([str(folder/'check')],root/f'{name}_check.txt'),flush=True)
+        resource=json.loads(run([str(folder/'resource')],root/f'{name}_resource.txt'))
+        (root/f'{name}_resource.json').write_text(json.dumps(resource,indent=2))
+        sass=run(['/usr/local/cuda/bin/cuobjdump','--dump-sass',str(folder/'bench')],root/f'{name}_sass.txt')
+        opcodes=re.findall(r'/\*[0-9a-f]+\*/\s+(?:@!?[A-Z0-9]+\s+)?([A-Z][A-Z0-9]*(?:\.[A-Z0-9_]+)*)\s',sass)
+        counts={key:opcodes.count(key) for key in sorted(set(opcodes))}
+        (root/f'{name}_sass_counts.json').write_text(json.dumps(counts,indent=2))
+        print(name,resource,'static instructions',sum(counts.values()),flush=True)
+    (root/'metadata.json').write_text(json.dumps(metadata,indent=2))
+elif phase=='measure':
+    runs=[]; repeats={name:0 for name in names}
+    for name in ['runtime','constant','constant','runtime','runtime','constant']:
+        repeats[name]+=1
+        output=run([str(root/name/'bench')],root/f'{name}_run{repeats[name]}.txt')
+        rows=[]
+        for line in output.splitlines():
+            parts=line.split()
+            if len(parts)==9 and all(x.isdigit() for x in parts[:3]):
+                rows.append({'shape':list(map(int,parts[:3])),'rounds_ms':list(map(float,parts[3:6])),'median_ms':float(parts[6])})
+        assert len(rows)==5,output
+        result={'variant':name,'repeat':repeats[name],'rows':rows}
+        runs.append(result); print(result,flush=True)
+    summary=[]
+    for i in range(5):
+        entry={'shape':runs[0]['rows'][i]['shape']}
+        for name in names:
+            matches=[r['rows'][i] for r in runs if r['variant']==name]
+            values=[v for row in matches for v in row['rounds_ms']]
+            entry[name]={'median_ms':statistics.median(values),'all_round_ms':values,'process_medians':[row['median_ms'] for row in matches]}
+        entry['speedup']=entry['runtime']['median_ms']/entry['constant']['median_ms']
+        summary.append(entry)
+    (root/'runs.json').write_text(json.dumps(runs,indent=2))
+    (root/'summary.json').write_text(json.dumps(summary,indent=2))
+    print(json.dumps(summary,indent=2),flush=True)
+elif phase=='profile':
+    metrics=['gpu__time_duration.sum','smsp__inst_executed.sum','smsp__issue_active.avg.pct_of_peak_sustained_active','smsp__sass_inst_executed_op_shared_ld.sum','smsp__sass_inst_executed_op_shared_st.sum']
+    results=[]
+    for repeat,order in enumerate([names,list(reversed(names))],1):
+        for name in order:
+            tag=f'{name}_profile{repeat}'
+            cmd=['/usr/local/cuda/bin/ncu','--replay-mode','application','--cache-control','none','--clock-control','none','--kernel-name','regex:gemm_tiled','--launch-skip','6','--launch-count','1','--metrics',','.join(metrics),'--export',str(root/tag),'--force-overwrite',str(root/name/'profile'),'2048','2048','2048']
+            run(cmd,root/f'{tag}_capture.txt')
+            output=run(['/usr/local/cuda/bin/ncu','--import',str(root/f'{tag}.ncu-rep'),'--page','raw','--csv','--print-units','base'],root/f'{tag}.csv')
+            row=next(row for row in csv.DictReader(io.StringIO(output)) if row.get('ID')=='0')
+            result={key:float(row[key].replace(',','')) for key in metrics}
+            result.update(variant=name,repeat=repeat)
+            results.append(result); print(json.dumps(result),flush=True)
+    (root/'profile_summary.json').write_text(json.dumps(results,indent=2))
+elif phase=='record':
+    summary=json.loads((root/'summary.json').read_text())
+    profiles=json.loads((root/'profile_summary.json').read_text())
+    assert len(profiles)==4
+    assert (root/'runtime/gemm_self_re.cu').read_bytes()==(repo/'gemm/gemm_self_transpose_a.cu').read_bytes()
+    target=repo/'gemm/gemm_self_const_block.cu'
+    assert not target.exists()
+    shutil.copyfile(root/'constant/gemm_self_re.cu',target)
+    table='| M,N,K | 运行时分工 ms | 编译期分工 ms | 原/新加速比 |\n|---|---:|---:|---:|\n'
+    for row in summary:
+        table+='| '+', '.join(map(str,row['shape']))+f" | {row['runtime']['median_ms']:.6f} | {row['constant']['median_ms']:.6f} | {row['speedup']:.3f}× |\n"
+    metric_table='| 2048指标 | 运行时分工 | 编译期分工 |\n|---|---:|---:|\n'
+    for label,key,digits in [('动态warp指令总数','smsp__inst_executed.sum',0),('调度器发射活跃，active周期 %','smsp__issue_active.avg.pct_of_peak_sustained_active',2),('动态shared加载warp指令','smsp__sass_inst_executed_op_shared_ld.sum',0),('动态shared存储warp指令','smsp__sass_inst_executed_op_shared_st.sum',0)]:
+        spans=[]
+        for name in names:
+            values=[p[key] for p in profiles if p['variant']==name]
+            spans.append(f'{min(values):,.{digits}f}—{max(values):,.{digits}f}')
+        metric_table+='| '+label+' | '+' | '.join(spans)+' |\n'
+    large=summary[2]
+    old_inst=next(p['smsp__inst_executed.sum'] for p in profiles if p['variant']=='runtime')
+    new_inst=next(p['smsp__inst_executed.sum'] for p in profiles if p['variant']=='constant')
+    note='''# 28 · 固定线程分工改用编译期常量
+
+2026-11-09晚间。用户提出编译期线程常量和float4搬运两项方向，明确授权现在只做前者。本轮以A局部转置、K32版为基线，输出64×64、每线程4×4、block16×16、Ats32×68、Bs32×64、单缓冲均保持。未实施float4、其他尺寸或布局修改。
+
+## 实际改动
+
+新增constexpr BLOCK_SIDE=OUTPUT_TILE/THREAD_TILE（16）、BLOCK_THREADS=BLOCK_SIDE*BLOCK_SIDE（256）。kernel内tid由ty*blockDim.x+tx改为ty*BLOCK_SIDE+tx；移除运行时threads变量，两段搬运循环都以BLOCK_THREADS为步长。host run_gemm的dim3 block也使用BLOCK_SIDE，保证启动与固定分工一致。外部入口当前仍由同一OUTPUT_TILE/THREAD_TILE表达式启动16×16，配置等价。
+
+这版kernel的固定搬运分工要求按指定16×16启动；没有声称支持任意block尺寸。没有手工添加#pragma unroll，是否展开由编译器决定。
+
+独立候选gemm/gemm_self_const_block.cu保留逐处Codex注释。原gemm_self_transpose_a.cu的SHA256仍为8a1cdb9617227d1b81f858df4f90607b0ec4657fc663f2cab84383207309be14，未覆盖它。
+
+## 正确性和资源
+
+两版重新编译-O3 -lineinfo -arch=sm_120，七组逐输出CPU double检查全部通过，覆盖单元素、非方阵、K尾部和输出tile边缘；所有五形状计时前64点CPU double抽查通过。Compute Sanitizer此前被Windows WDDM调试接口阻挡，本轮未重试，不声称通过竞争/同步检测。
+
+| 项目 | 运行时分工 | 编译期分工 |
+|---|---:|---:|
+| 寄存器/线程 | 64 | 61 |
+| static shared/block | 16896B | 16896B |
+| local/线程 | 0B | 0B |
+| 理论block/SM | 4 | 4 |
+
+寄存器需求下降，但本轮未跨越能增加驻留block的分配阈值。
+
+## 普通性能同期对照
+
+固定五形状和随机输入，20次预热、每进程3轮每轮100次启动；每版三进程按runtime/constant/constant/runtime/runtime/constant交错。CUDA events，取九轮批量平均耗时中位数，不计分配/拷贝/校验，复用缓冲不清L2。保持与notes/27参照入口相同的20/100批次参数；这里只比较本轮两版，不拼接历史绝对耗时。
+
+'''+table+f'''
+2048中位数由{large['runtime']['median_ms']:.6f}ms变为{large['constant']['median_ms']:.6f}ms，候选耗时高约{(1/large['speedup']-1)*100:.2f}%。三次进程中位数：原版1.355623/1.363524/1.350520ms，候选1.399399/1.365660/1.384737ms；候选每次略慢，但原始轮次范围重叠。报告本轮轻微回退，不外推为稳定普遍退步，也不声称已测出加速。
+
+长方形表中约1.092倍，但第三次候选进程0.039303ms明显慢于原版0.030792ms，前两次候选更快；不足以声称稳定收益。128明显存在较长轮次，其余小/边缘输入差异小，保留全部数据，不挑选最快轮次。
+
+## 生成代码和动态指令
+
+静态SASS中有地址/控制代码简化；原版总静态指令646条，候选564条（解析器按opcode计数）。静态条数不代表循环展开后的实际执行量，实际动态计数如下。
+
+Nsight Compute application replay、cache-control none、clock-control none，沿用六次调用后采第七次入口，正反顺序各一轮。采集预热6与普通计时21次先行调用不同，且未锁频；仅把这些计数作为结构证据，profiler耗时不替代普通计时。
+
+'''+metric_table+f'''
+动态warp指令总数从{old_inst:,.0f}减到{new_inst:,.0f}，减少约{(1-new_inst/old_inst)*100:.2f}%。shared读写动态指令数量保持相同，说明本项主要简化了辅助工作。候选发射活跃同时略降。寄存器数、代码组织/调度也有变化，尚未隔离全部效果，不能将普通计时的差异全部归因某一项指标。
+
+本次验证了“编译期可见的分工能影响生成代码并减少实际指令”，未验证“指令减少必然净加速”。profile中候选单次耗时略短，但它受采集环境影响，不用来推翻普通计时中未加速的结果。
+
+## 当前状态与下一步
+
+独立候选已保存，默认gemm_self_re.cu和原A转置K32版均保留。未实施第二项float4；是否以该候选为后续分支基线，下一轮再按用户选择。正确性及脚本范围检查完成，尚未提交/push。
+
+notes/data/2026-11-09-gemm-const-block保留两版实际源码、共同bench/check/resource/profile入口、编译命令、完整检查、原始计时、资源、SASS和两轮计数器。build/const_block_2026-11-09的可执行文件与.ncu-rep忽略。experiment.py.txt为本轮编排脚本，prepare/measure/profile/record分阶段运行，prepare要求新目录。
+'''
+    path=repo/'notes/28-gemm-const-block.md'
+    assert not path.exists(); path.write_text(note)
+    data=repo/'notes/data/2026-11-09-gemm-const-block'; data.mkdir(exist_ok=False)
+    for path in root.iterdir():
+        if path.is_file() and path.suffix in ['.json','.txt','.csv']:
+            shutil.copyfile(path,data/path.name)
+    for name in names:
+        for path in (root/name).iterdir():
+            if path.suffix in ['.cu','.txt','.json']:
+                shutil.copyfile(path,data/(f'{name}_{path.name}'+('.txt' if path.suffix=='.cu' else '')))
+    shutil.copyfile(Path(__file__),data/'experiment.py.txt')
+    readme=repo/'README.md'; text=readme.read_text()
+    anchor=next(line for line in text.splitlines() if 'notes/27-gemm-reference-anchor.md' in line)
+    text=text.replace(anchor,anchor+'\n| [28 · 编译期线程分工](notes/28-gemm-const-block.md) | 动态指令减少约7.85%，本轮2048普通计时未加速；float4尚未实施 |',1)
+    readme.write_text(text)
+    with (repo/'HANDOFF.md').open('a') as stream:
+        stream.write('\n\n2026-11-09晚：用户明确先只做编译期线程常量。独立gemm/gemm_self_const_block.cu，基于A转置K32，新增BLOCK_SIDE/BLOCK_THREADS，tid和加载步长及host启动引用固定分工；未加float4。七组完整检查及五形状抽查通过。寄存器64→61、shared16896B及理论4block/SM不变；动态warp指令532799488→490979328（-7.85%），shared读写指令总量不变。同期20预热/3x100、三进程交错，2048=1.358899→1.384737ms，约慢1.90%，轮次范围重叠，未证实加速；长方形不稳定。notes/28及文本原始数据保存，默认和A转置K32保留，未继续第二项，未提交。\n')
+    print(table,metric_table,flush=True)
+else:
+    raise ValueError(phase)

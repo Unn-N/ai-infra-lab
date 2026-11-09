@@ -1,0 +1,9 @@
+[
+  "/usr/local/cuda/bin/nvcc",
+  "-O3",
+  "-lineinfo",
+  "-arch=sm_120",
+  "/home/unn/ai-infra-lab/build/padding_as2_2026-11-09/pad2/profile.cu",
+  "-o",
+  "/home/unn/ai-infra-lab/build/padding_as2_2026-11-09/pad2/profile"
+]

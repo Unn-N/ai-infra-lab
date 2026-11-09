@@ -1,0 +1,367 @@
+[563] profile@127.0.0.1
+  gemm_tiled(const float *, const float *, float *, int, int, int) (32, 32, 1)x(16, 16, 1), Context 1, Stream 7, Device 0, CC 12.0
+    Warning: Data collection happened without fixed GPU frequencies. Profiling results may be inconsistent.
+    Section: Compute Workload Analysis
+    ---------------------- ----------- ------------
+    Metric Name            Metric Unit Metric Value
+    ---------------------- ----------- ------------
+    Executed Ipc Active     inst/cycle         2.95
+    Executed Ipc Elapsed    inst/cycle         2.87
+    Issue Slots Busy                 %        71.87
+    Issued Ipc Active       inst/cycle         2.95
+    Max. Issued Slots Busy           %        74.12
+    SM Busy                          %        71.87
+    ---------------------- ----------- ------------
+
+    Pipe Utilization (Elapsed Cycles)
+    Table Name : Aggregate Pipe Utilization (% of elapsed cycles)
+    Table Description : Aggregate pipeline utilization based on the number of elapsed (all) cycles in the workload. This takes the rates of different instructions executing on the pipeline into account. For an instruction requiring 4 cycles to complete execution, the counter is increased by 1 for 4 cycles. Use this to understand the overall pipeline utilization over the entire workload.
+    ------------ ----------- ------------
+    Metric Name  Metric Unit Metric Value
+    ------------ ----------- ------------
+    FMA                    %        43.02
+    ALU                    %        15.51
+    Tensor (All)           %            0
+    ------------ ----------- ------------
+
+    Table Name : Aggregate Pipe Utilization (% of peak instructions executed over elapsed cycles)
+    Table Description : Aggregate pipeline utilization based on the number of executed instructions over elapsed (all) cycles. This does not account for any variation in instruction latencies for this pipeline. For an instruction requiring 4 cycles to complete execution, the counter is increased by 1 only. Use this to understand the composition of instructions/latencies (high-latency, low-rate instructions won't result in peak values).
+    ----------- ----------- ------------
+    Metric Name Metric Unit Metric Value
+    ----------- ----------- ------------
+    FMA                   %        38.75
+    ALU                   %        14.97
+    ----------- ----------- ------------
+
+    Table Name : Physical Pipe Utilization (% of elapsed cycles)
+    Table Description : Physical pipeline utilization based on the number of elapsed (all) cycles in the workload. This takes the rates of different instructions executing on the pipeline into account. For an instruction requiring 4 cycles to complete execution, the counter is increased by 1 for 4 cycles. Use this to understand the overall pipeline utilization over the entire workload.
+    --------------------------- ----------- ------------
+    Metric Name                 Metric Unit Metric Value
+    --------------------------- ----------- ------------
+    Shared FMA Heavy + ALU Lite           %        60.12
+    FMA Heavy                             %        46.24
+    FMA Lite                              %        39.81
+    ALU Heavy                             %        20.53
+    ALU Lite                              %        10.49
+    FP64                                  %            0
+    Tensor (FP)                           %            0
+    Tensor (INT)                          %            0
+    TMA                                   %            0
+    --------------------------- ----------- ------------
+
+    Table Name : Physical Pipe Utilization (% of peak instructions executed over elapsed cycles)
+    Table Description : Physical pipeline utilization based on the number of executed instructions over elapsed (all) cycles. This does not account for any variation in instruction latencies for this pipeline. For an instruction requiring 4 cycles to complete execution, the counter is increased by 1 only. Use this to understand the composition of instructions/latencies (high-latency, low-rate instructions won't result in peak values).
+    ---------------- ----------- ------------
+    Metric Name      Metric Unit Metric Value
+    ---------------- ----------- ------------
+    LSU                        %        68.79
+    Shared FMA Heavy           %        53.64
+    FMA Heavy                  %        43.15
+    FMA Lite                   %        35.70
+    ALU Heavy                  %        20.53
+    ADU                        %        11.84
+    ALU Lite                   %        10.49
+    Uniform                    %         4.90
+    FMA (FP16)                 %         1.34
+    CBU                        %         0.54
+    XU                         %         0.03
+    FP64                       %            0
+    FP64 (DMMA)                %            0
+    FP64 (FP64)                %            0
+    Tensor (FP)                %            0
+    Tensor (INT)               %            0
+    TEX                        %            0
+    TMA                        %            0
+    WorkID/CLC                 %            0
+    ---------------- ----------- ------------
+
+    Pipe Utilization (Active Cycles)
+    Table Name : Aggregate Pipe Utilization (% of active cycles)
+    Table Description : Aggregate pipeline utilization based on the number of cycles the pipeline was active. This takes the rates of different instructions executing on the pipeline into account. For an instruction requiring 4 cycles to complete execution, the counter is increased by 1 for 4 cycles. Use this to understand the pipeline utilization for the time it was active.
+    ------------ ----------- ------------
+    Metric Name  Metric Unit Metric Value
+    ------------ ----------- ------------
+    FMA                    %        44.18
+    ALU                    %        15.93
+    Tensor (All)           %            0
+    ------------ ----------- ------------
+
+    Table Name : Aggregate Pipe Utilization (% of peak instructions executed over active cycles)
+    Table Description : Aggregate pipeline utilization based on the number of executed instructions over active cycles. This does not account for any variation in instruction latencies for this pipeline. For an instruction requiring 4 cycles to complete execution, the counter is increased by 1 only. Use this to understand the composition of instructions/latencies (high-latency, low-rate instructions won't result in peak values).
+    ----------- ----------- ------------
+    Metric Name Metric Unit Metric Value
+    ----------- ----------- ------------
+    FMA                   %        39.80
+    ALU                   %        15.38
+    ----------- ----------- ------------
+
+    Table Name : Physical Pipe Utilization (% of active cycles)
+    Table Description : Physical pipeline utilization based on the number of cycles the pipeline was active. This takes the rates of different instructions executing on the pipeline into account. For an instruction requiring 4 cycles to complete execution, the counter is increased by 1 for 4 cycles. Use this to understand the pipeline utilization for the time it was active.
+    ---------------- ----------- ------------
+    Metric Name      Metric Unit Metric Value
+    ---------------- ----------- ------------
+    Shared FMA Heavy           %        61.74
+    FMA Heavy                  %        47.49
+    FMA Lite                   %        40.88
+    ALU Heavy                  %        21.08
+    ALU Lite                   %        10.77
+    FP64                       %            0
+    Tensor (FP)                %            0
+    Tensor (INT)               %            0
+    TMA                        %            0
+    ---------------- ----------- ------------
+
+    Table Name : Physical Pipe Utilization (% of peak instructions executed over active cycles)
+    Table Description : Physical pipeline utilization based on the number of executed instructions over active cycles. This does not account for any variation in instruction latencies for this pipeline. For an instruction requiring 4 cycles to complete execution, the counter is increased by 1 only. Use this to understand the composition of instructions/latencies (high-latency, low-rate instructions won't result in peak values).
+    --------------------------- ----------- ------------
+    Metric Name                 Metric Unit Metric Value
+    --------------------------- ----------- ------------
+    LSU                                   %        70.64
+    Shared FMA Heavy + ALU Lite           %        55.08
+    FMA Heavy                             %        44.31
+    FMA Lite                              %        36.67
+    ALU Heavy                             %        21.08
+    ADU                                   %        12.16
+    ALU Lite                              %        10.77
+    Uniform                               %         5.03
+    FMA (FP16)                            %         1.38
+    CBU                                   %         0.55
+    XU                                    %         0.03
+    FP64                                  %            0
+    FP64 (DMMA)                           %            0
+    FP64 (FP64)                           %            0
+    Tensor (FP)                           %            0
+    Tensor (INT)                          %            0
+    TEX                                   %            0
+    TMA                                   %            0
+    WorkID/CLC                            %            0
+    --------------------------- ----------- ------------
+
+    OPT   Shared FMA Heavy is the highest-utilized pipeline (60.1%) based on elapsed cycles in the workload, taking
+          into account the rates of its different instructions. It is a physical pipe and shared by the logical pipes
+          FMA Heavy and ALU Lite. It's dominated by its FMA Heavy sub-pipeline. The pipeline is well-utilized, but
+          might become a bottleneck if more work is added. Based on the number of executed instructions, the highest
+          utilized pipeline (68.8%) is LSU. It executes load/store memory operations. Comparing the two, the overall
+          pipeline utilization appears to be caused by frequent, low-latency instructions. See the Profiling Guide
+          (https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html#metrics-decoder) or hover over the
+          pipeline name to understand the workloads handled by each pipeline. The Instruction Statistics section shows
+          the mix of executed instructions for this workload. Check the Warp State Statistics section for which
+          reasons cause warps to stall.
+
+    Section: Scheduler Statistics
+    -------------------------------------- ----------- ------------
+    Metric Name                            Metric Unit Metric Value
+    -------------------------------------- ----------- ------------
+    One or More Eligible                             %        74.22
+    Issued Warp Per Scheduler                                  0.74
+    No Eligible                                      %        25.78
+    Theoretical Active Warps Per Scheduler        warp           12
+    Active Warps Per Scheduler                    warp         7.55
+    Eligible Warps Per Scheduler                  warp         3.33
+    -------------------------------------- ----------- ------------
+
+    Table Name : Warps Per Scheduler
+    ------------------------------- ----------- ------------
+    Metric Name                     Metric Unit Metric Value
+    ------------------------------- ----------- ------------
+    Issued Warp Per Scheduler                           0.74
+    Theoretical Warps Per Scheduler        warp            8
+    GPU Maximum Warps Per Scheduler        warp           12
+    Active Warps Per Scheduler             warp         7.55
+    Eligible Warps Per Scheduler           warp         3.33
+    ------------------------------- ----------- ------------
+
+    Section: Warp State Statistics
+    ------------------------------------------------------------------ ----------- ------------
+    Metric Name                                                        Metric Unit Metric Value
+    ------------------------------------------------------------------ ----------- ------------
+    smsp__warpidsamp_warps_issue_stalled_barrier_not_issued                   warp         2166
+    smsp__warpidsamp_warps_issue_stalled_branch_resolving_not_issued      branches          225
+    smsp__warpidsamp_warps_issue_stalled_dispatch_stall_not_issued            warp          130
+    smsp__warpidsamp_warps_issue_stalled_drain_not_issued                     warp          102
+    smsp__warpidsamp_warps_issue_stalled_lg_throttle_not_issued               warp          376
+    smsp__warpidsamp_warps_issue_stalled_long_scoreboard_not_issued           warp         4074
+    smsp__warpidsamp_warps_issue_stalled_math_pipe_throttle_not_issued        warp          384
+    smsp__warpidsamp_warps_issue_stalled_membar_not_issued                    warp            0
+    smsp__warpidsamp_warps_issue_stalled_mio_throttle_not_issued              warp         6264
+    smsp__warpidsamp_warps_issue_stalled_misc_not_issued                      warp            0
+    smsp__warpidsamp_warps_issue_stalled_no_instructions_not_issued           warp          249
+    smsp__warpidsamp_warps_issue_stalled_not_selected_not_issued              warp          358
+    smsp__warpidsamp_warps_issue_stalled_selected_not_issued                  warp            0
+    smsp__warpidsamp_warps_issue_stalled_short_scoreboard_not_issued          warp         3503
+    smsp__warpidsamp_warps_issue_stalled_sleeping_not_issued                  warp            0
+    smsp__warpidsamp_warps_issue_stalled_tex_throttle_not_issued              warp            0
+    smsp__warpidsamp_warps_issue_stalled_wait_not_issued                      warp         3120
+    Warp Cycles Per Issued Instruction                                       cycle        10.17
+    Warp Cycles Per Executed Instruction                                     cycle        10.17
+    Issued Warp Per Scheduler                                                              0.74
+    Avg. Active Threads Per Warp                                                             32
+    Avg. Not Predicated Off Threads Per Warp                                              31.85
+    ------------------------------------------------------------------ ----------- ------------
+
+    Table Name : Warp State (All Cycles)
+    ------------------------ ----------- ------------
+    Metric Name              Metric Unit Metric Value
+    ------------------------ ----------- ------------
+    Stall Not Selected              inst         3.50
+    Stall Wait                      inst         1.03
+    Selected                        inst            1
+    Stall Dispatch Stall            inst         0.98
+    Stall Long Scoreboard           inst         0.88
+    Stall Short Scoreboard          inst         0.85
+    Stall Barrier                   inst         0.70
+    Stall MIO Throttle              inst         0.68
+    Stall Math Pipe Throttle        inst         0.39
+    Stall Branch Resolving          inst         0.09
+    Stall No Instruction            inst         0.09
+    Stall LG Throttle               inst         0.02
+    Stall Drain                     inst         0.01
+    Stall Membar                    inst            0
+    Stall Misc                      inst         0.00
+    Stall Sleeping                  inst            0
+    Stall Tex Throttle              inst            0
+    ------------------------ ----------- ------------
+
+    Table Name : Warp State (Not-issued Samples)
+    Table Description : Aggregated warp stall samples for when the warp scheduler issued no instruction, per SMSP ID:Warp Slot ID combination. Each SM has four SM sub-partitions (SMSPs). A sub partition has a fixed number of warp slots to which the scheduler assigns warps. Right-click the header to filter the stall reasons.
+    ------------------------------------------------------------------ ----------- ------------
+    Metric Name                                                        Metric Unit Metric Value
+    ------------------------------------------------------------------ ----------- ------------
+    smsp__warpidsamp_warps_issue_stalled_mio_throttle_not_issued              warp         6264
+    smsp__warpidsamp_warps_issue_stalled_long_scoreboard_not_issued           warp         4074
+    smsp__warpidsamp_warps_issue_stalled_short_scoreboard_not_issued          warp         3503
+    smsp__warpidsamp_warps_issue_stalled_wait_not_issued                      warp         3120
+    smsp__warpidsamp_warps_issue_stalled_barrier_not_issued                   warp         2166
+    smsp__warpidsamp_warps_issue_stalled_math_pipe_throttle_not_issued        warp          384
+    smsp__warpidsamp_warps_issue_stalled_lg_throttle_not_issued               warp          376
+    smsp__warpidsamp_warps_issue_stalled_not_selected_not_issued              warp          358
+    smsp__warpidsamp_warps_issue_stalled_no_instructions_not_issued           warp          249
+    smsp__warpidsamp_warps_issue_stalled_branch_resolving_not_issued      branches          225
+    smsp__warpidsamp_warps_issue_stalled_dispatch_stall_not_issued            warp          130
+    smsp__warpidsamp_warps_issue_stalled_drain_not_issued                     warp          102
+    smsp__warpidsamp_warps_issue_stalled_membar_not_issued                    warp            0
+    smsp__warpidsamp_warps_issue_stalled_misc_not_issued                      warp            0
+    smsp__warpidsamp_warps_issue_stalled_selected_not_issued                  warp            0
+    smsp__warpidsamp_warps_issue_stalled_sleeping_not_issued                  warp            0
+    smsp__warpidsamp_warps_issue_stalled_tex_throttle_not_issued              warp            0
+    ------------------------------------------------------------------ ----------- ------------
+
+    WRN   The optional metric smsp__pcsamp_sample_count could not be found. Collecting it as an additional metric could
+          enable the rule to provide more guidance.
+    ----- --------------------------------------------------------------------------------------------------------------
+    OPT   Est. Local Speedup: 34.42%
+          On average, each warp of this workload spends 3.5 cycles being stalled waiting for the micro scheduler to
+          select the warp to issue. Not selected warps are eligible warps that were not picked by the scheduler to
+          issue that cycle as another warp was selected. A high number of not selected warps typically means you have
+          sufficient warps to cover warp latencies and you may consider reducing the number of active warps to
+          possibly increase cache coherence and data locality. This stall type represents about 34.4% of the total
+          average of 10.2 cycles between issuing two instructions.
+    ----- --------------------------------------------------------------------------------------------------------------
+    INF   Check the Warp Stall Sampling (All Samples) table for the top stall locations in your source based on
+          sampling data. The Profiling Guide
+          (https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html#metrics-reference) provides more details
+          on each stall reason.
+
+    Section: Instruction Statistics
+    ------------------------------------------ ----------- ------------
+    Metric Name                                Metric Unit Metric Value
+    ------------------------------------------ ----------- ------------
+    Instructions Executed                             inst    562184192
+    Local Memory Spilling Requests                    inst            0
+    Shared Memory Spilling Requests                   inst            0
+    Avg. Executed Instructions Per Scheduler          inst   2928042.67
+    Executed Instructions                             inst    562184192
+    Avg. Issued Instructions Per Scheduler            inst   2928042.67
+    Issued Instructions                               inst    562184192
+    Predicated-On Thread Instructions Executed        inst  17904699392
+    ------------------------------------------ ----------- ------------
+
+    Category and Pipeline Charts (Warp-Level)
+    Table Name : Executed Instruction Categories (Warp-Level)
+    --------------------------------------------- ----------- ------------------------------
+    Metric Name                                   Metric Unit                   Metric Value
+    --------------------------------------------- ----------- ------------------------------
+    Executed Instructions by SASS Opcode Category                      562184192 (273694720;
+                                                                        134414336; 75644928;
+                                                                         44728320; 17850368;
+                                                                   11042816; 4792320; 16384)
+    --------------------------------------------- ----------- ------------------------------
+
+    Table Name : Estimated Instructions per Pipeline (Warp-Level)
+    Table Description : Estimated distribution of executed instructions across pipelines based on opcode. This is an estimation, as some opcodes have multiple associated possible pipelines. This may not reflect the actual dynamic hardware execution.
+    ---------------------------------------------- ----------- ------------------------------
+    Metric Name                                    Metric Unit                   Metric Value
+    ---------------------------------------------- ----------- ------------------------------
+    Estimated Instructions by SASS Opcode Pipeline                      895623168 (362348544;
+                                                                        273686528; 117112832;
+                                                                          67780608; 40468480;
+                                                                 17850368; 11591680; 2662400;
+                                                                              2097152; 24576)
+    ---------------------------------------------- ----------- ------------------------------
+
+    Detailed Opcode Charts (Warp-Level)
+    Table Name : Executed Instruction Mix (Warp-Level)
+    ----------------------------------------------------- ----------- ------------------------------
+    Metric Name                                           Metric Unit                   Metric Value
+    ----------------------------------------------------- ----------- ------------------------------
+    Executed Warp-Level Instructions By Basic SASS Opcode                      562184192 (268435456;
+                                                                                 50331648; 38395904;
+                                                                                 29450240; 26402816;
+                                                                                 20652032; 18890752;
+                                                                                 13639680; 11034624;
+                                                                         10493952; 8962048; 8921088;
+                                                                          8437760; 8404992; 8388608;
+                                                                          8388608; 5251072; 2662400;
+                                                                          2121728; 2105344; 2097152;
+                                                                          2097152; 2097152; 1597440;
+                                                                           1105920; 1048576; 540672;
+                                                                         131072; 40960; 16384; 8192;
+                                                                             8192; 8192; 8192; 8192)
+    ----------------------------------------------------- ----------- ------------------------------
+
+    Category and Pipeline Charts (Thread-Level)
+    Table Name : Executed Instruction Categories (Thread-Level)
+    --------------------------------------------- ----------- ------------------------------
+    Metric Name                                   Metric Unit                   Metric Value
+    --------------------------------------------- ----------- ------------------------------
+    Executed Instructions by SASS Opcode Category                   17904699392 (8758231040;
+                                                                     4300212224; 2420637696;
+                                                                      1431306240; 487063552;
+                                                               353370112; 153354240; 524288)
+    --------------------------------------------- ----------- ------------------------------
+
+    Table Name : Estimated Instructions per Pipeline (Thread-Level)
+    Table Description : Estimated distribution of executed instructions across pipelines based on opcode. This is an estimation, as some opcodes have multiple associated possible pipelines. This may not reflect the actual dynamic hardware execution.
+    ---------------------------------------------- ----------- ------------------------------
+    Metric Name                                    Metric Unit                   Metric Value
+    ---------------------------------------------- ----------- ------------------------------
+    Estimated Instructions by SASS Opcode Pipeline                  28573962240 (11594369024;
+                                                                      8757968896; 3746564096;
+                                                                      2168979456; 1294991360;
+                                                                        487063552; 370933760;
+                                                                  85196800; 67108864; 786432)
+    ---------------------------------------------- ----------- ------------------------------
+
+    Detailed Opcode Charts (Thread-Level)
+    Table Name : Executed Instruction Mix (Thread-Level)
+    ------------------------------------------------------- ----------- ------------------------------
+    Metric Name                                             Metric Unit                   Metric Value
+    ------------------------------------------------------- ----------- ------------------------------
+    Executed Thread-Level Instructions By Basic SASS Opcode                   17904699392 (8589934592;
+                                                                               1610612736; 1228668928;
+                                                                                 942407680; 844105728;
+                                                                                 660865024; 604504064;
+                                                                                 353107968; 352583680;
+                                                                                 335806464; 286523392;
+                                                                                 285474816; 270008320;
+                                                                                 268959744; 268435456;
+                                                                                 268435456; 168034304;
+                                                                                   85196800; 67895296;
+                                                                                   67371008; 67108864;
+                                                                                   67108864; 67108864;
+                                                                                   51118080; 35389440;
+                                                                          33554432; 17301504; 4194304;
+                                                                              1310720; 262144; 262144;
+                                                                               262144; 262144; 262144;
+                                                                                               262144)
+    ------------------------------------------------------- ----------- ------------------------------

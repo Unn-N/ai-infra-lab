@@ -1,0 +1,10 @@
+{
+  "nominal_CUDA_cores": 6144,
+  "nominal_boost_GHz": 2.51,
+  "nominal_FP32_FMA_TFLOPs": 30.84288,
+  "gemm_2048_FLOPs": 17179869184,
+  "nominal_ideal_compute_ms": 0.5570124833997344,
+  "self_TFLOPs": 11.926307067952699,
+  "cublas_TFLOPs": 21.235800995049473,
+  "warning": "Nominal-clock arithmetic reference, not a hard runtime guarantee or a proven achievable minimum. Actual clocks differ across workloads."
+}

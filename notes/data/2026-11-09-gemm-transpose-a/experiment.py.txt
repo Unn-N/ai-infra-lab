@@ -1,0 +1,228 @@
+from pathlib import Path
+import subprocess, json, hashlib, re, statistics, csv, io, shutil, sys
+
+repo=Path('/home/unn/ai-infra-lab')
+root=repo/'build/transpose_a_2026-11-09'
+oldroot=repo/'build/padding_as2_2026-11-09/baseline'
+nvcc='/usr/local/cuda/bin/nvcc'
+ncu='/usr/local/cuda/bin/ncu'
+names=['baseline','transA']
+
+def run(cmd,path):
+    path.with_suffix('.command.json').write_text(json.dumps(cmd,indent=2))
+    result=subprocess.run(cmd,capture_output=True,text=True)
+    path.write_text(result.stdout+result.stderr)
+    if result.returncode:
+        print(result.stdout+result.stderr,flush=True)
+        raise RuntimeError(cmd)
+    return result.stdout
+
+phase=sys.argv[1]
+if phase=='prepare':
+    root.mkdir(exist_ok=False)
+    baseline=(repo/'gemm/gemm_self_re.cu').read_text()
+    assert hashlib.sha256(baseline.encode()).hexdigest()=='e0746da45b8a956068ca57632600a1b1c7ac4a3499ee2e2dc0b35218d20f5788'
+    candidate=baseline
+    changes=[('    __shared__ float As[OUTPUT_TILE][K_TILE];', '''    // [Codex A局部转置实验] A的有效64×32输入块，在shared中按[k][r]存成32×64。
+    // 每行额外留4个float：当前行跨度68*4=272B，保持16B对齐，方便四个A连续宽读。
+    // 按当前搬运方式，跨度64会使一个warp的转置写入落同一bank；68可分散到8个bank，
+    // 标量映射仍有4路写冲突。本实验先观察这种简单布局的读写取舍，不声称消除全部冲突。
+    __shared__ __align__(16) float Ats[K_TILE][OUTPUT_TILE + 4];'''),
+    ('            As[r][k] = (block_row + r < M && k0 + k < K)', '''            // [Codex A局部转置实验] global读地址不变，只把shared目标索引调换。
+            Ats[k][r] = (block_row + r < M && k0 + k < K)'''),
+    ('            for (int i = 0; i < THREAD_TILE; ++i) a[i] = As[local_row + i][k];', '''            // [Codex A局部转置实验] 当前k所需四个A在shared中连续；B维持原布局。
+            for (int i = 0; i < THREAD_TILE; ++i) a[i] = Ats[k][local_row + i];''')]
+    for before,after in changes:
+        assert candidate.count(before)==1
+        candidate=candidate.replace(before,after)
+    metadata={}
+    for name,source in [('baseline',baseline),('transA',candidate)]:
+        folder=root/name
+        folder.mkdir()
+        (folder/'gemm_self_re.cu').write_text(source)
+        for filename in ['gemm_self_bench.cu','gemm_self_check.cu','resource.cu','profile.cu']:
+            shutil.copyfile(oldroot/filename,folder/filename)
+        metadata[name]={'sha256':hashlib.sha256(source.encode()).hexdigest(),'output_tile':64,'K_tile':32,'thread_tile':4,'block_threads':256,'A_shared_shape':[64,32] if name=='baseline' else [32,68]}
+        for sourcefile,binary in [('gemm_self_bench.cu','bench'),('gemm_self_check.cu','check'),('resource.cu','resource'),('profile.cu','profile')]:
+            run([nvcc,'-O3','-lineinfo','-arch=sm_120',str(folder/sourcefile),'-o',str(folder/binary)],folder/f'compile_{binary}.txt')
+        print('Compiled',name,flush=True)
+        print(run([str(folder/'check')],root/f'{name}_check.txt'),flush=True)
+        resource=json.loads(run([str(folder/'resource')],root/f'{name}_resource.txt'))
+        (root/f'{name}_resource.json').write_text(json.dumps(resource,indent=2))
+        sass=run(['/usr/local/cuda/bin/cuobjdump','--dump-sass',str(folder/'bench')],root/f'{name}_sass.txt')
+        counts={key:len(re.findall(r'\b'+re.escape(key)+r'\s',sass)) for key in ['LDS','LDS.64','LDS.128','STS','STS.64','STS.128','FFMA']}
+        (root/f'{name}_sass_counts.json').write_text(json.dumps(counts,indent=2))
+        print(name,resource,counts,flush=True)
+    (root/'metadata.json').write_text(json.dumps(metadata,indent=2))
+elif phase in ['measure','focus']:
+    binary='bench'
+    if phase=='focus':
+        binary='focus'
+        for name in names:
+            folder=root/name
+            source=(folder/'gemm_self_bench.cu').read_text()
+            source=source.replace('constexpr int warmup = 5;', 'constexpr int warmup = 20;').replace('constexpr int repeats = 20;', 'constexpr int repeats = 100;')
+            # Keep all shapes and their exact input sequences; lengthen only batch timing.
+            (folder/'focus.cu').write_text(source)
+            run([nvcc,'-O3','-lineinfo','-arch=sm_120',str(folder/'focus.cu'),'-o',str(folder/'focus')],folder/'compile_focus.txt')
+    runs=[]
+    # Three runs per version, balanced adjacent direction, one GPU job at a time.
+    order=['baseline','transA','transA','baseline','baseline','transA']
+    repeats={name:0 for name in names}
+    for name in order:
+        repeats[name]+=1
+        output=run([str(root/name/binary)],root/f'{name}_{phase}{repeats[name]}.txt')
+        rows=[]
+        for line in output.splitlines():
+            parts=line.split()
+            if len(parts)==9 and all(p.isdigit() for p in parts[:3]):
+                rows.append({'shape':list(map(int,parts[:3])),'rounds_ms':list(map(float,parts[3:6])),'median_ms':float(parts[6])})
+        assert len(rows)==5,output
+        entry={'variant':name,'repeat':repeats[name],'rows':rows}
+        runs.append(entry)
+        print(entry,flush=True)
+    summary=[]
+    for i in range(5):
+        entry={'shape':runs[0]['rows'][i]['shape']}
+        for name in names:
+            matches=[run['rows'][i] for run in runs if run['variant']==name]
+            values=[v for row in matches for v in row['rounds_ms']]
+            entry[name]={'median_ms':statistics.median(values),'rounds_ms':values,'process_medians':[row['median_ms'] for row in matches]}
+        entry['speedup']=entry['baseline']['median_ms']/entry['transA']['median_ms']
+        summary.append(entry)
+    (root/f'{phase}_runs.json').write_text(json.dumps(runs,indent=2))
+    (root/f'{phase}_summary.json').write_text(json.dumps(summary,indent=2))
+    print(json.dumps(summary,indent=2),flush=True)
+elif phase=='profile':
+    metrics=['gpu__time_duration.sum','l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum','l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum','l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum','l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum','smsp__sass_inst_executed_op_shared_ld.sum','smsp__sass_inst_executed_op_shared_st.sum']
+    results=[]
+    for repeat,order in enumerate([names,list(reversed(names))],1):
+        for name in order:
+            tag=f'{name}_profile{repeat}'
+            cmd=[ncu,'--replay-mode','application','--cache-control','none','--clock-control','none','--kernel-name','regex:gemm_tiled','--launch-skip','6','--launch-count','1','--metrics',','.join(metrics),'--export',str(root/tag),'--force-overwrite',str(root/name/'profile'),'2048','2048','2048']
+            run(cmd,root/f'{tag}_capture.txt')
+            output=run([ncu,'--import',str(root/f'{tag}.ncu-rep'),'--page','raw','--csv','--print-units','base'],root/f'{tag}.csv')
+            row=next(row for row in csv.DictReader(io.StringIO(output)) if row.get('ID')=='0')
+            result={key:float(row[key].replace(',','')) for key in metrics}
+            result.update(variant=name,repeat=repeat)
+            results.append(result)
+            print(json.dumps(result),flush=True)
+    (root/'profile_summary.json').write_text(json.dumps(results,indent=2))
+elif phase=='inspect':
+    for name in names:
+        lines=(root/f'{name}_sass.txt').read_text().splitlines()
+        start=next(i for i,line in enumerate(lines) if ' LDS' in line)
+        end=next(i for i in range(start,len(lines)) if re.search(r'\bBRA(?:\.\w+)*\s',lines[i]))
+        loop=lines[start:end+1]
+        counts={key:len([line for line in loop if re.search(r'\b'+re.escape(key)+r'\s',line)]) for key in ['LDS.64','LDS.128','FFMA']}
+        excerpt='\n'.join(loop[:8]+['...']+loop[-12:])+'\n'
+        (root/f'{name}_compute_loop_excerpt.txt').write_text(excerpt)
+        (root/f'{name}_compute_loop_counts.json').write_text(json.dumps(counts,indent=2))
+        print(name,counts,excerpt,flush=True)
+elif phase=='record':
+    summary=json.loads((root/'measure_summary.json').read_text())
+    profiles=json.loads((root/'profile_summary.json').read_text())
+    assert len(profiles)==4
+    assert (repo/'gemm/gemm_self_re.cu').read_bytes()==(root/'baseline/gemm_self_re.cu').read_bytes()
+    candidate=repo/'gemm/gemm_self_transpose_a.cu'
+    assert not candidate.exists()
+    shutil.copyfile(root/'transA/gemm_self_re.cu',candidate)
+    table='| M,N,K | 原版 ms | A局部转置 ms | 原/新加速比 |\n|---|---:|---:|---:|\n'
+    for row in summary:
+        table+='| '+', '.join(map(str,row['shape']))+f" | {row['baseline']['median_ms']:.6f} | {row['transA']['median_ms']:.6f} | {row['speedup']:.3f}× |\n"
+    metric_table='| 2048指标 | 原版，两轮范围 | A局部转置，两轮范围 |\n|---|---:|---:|\n'
+    for label,key in [('shared读取bank conflicts','l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum'),('shared写入bank conflicts','l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum'),('动态shared加载warp指令','smsp__sass_inst_executed_op_shared_ld.sum'),('动态shared存储warp指令','smsp__sass_inst_executed_op_shared_st.sum'),('shared读取wavefronts','l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum'),('shared写入wavefronts','l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum')]:
+        spans=[]
+        for name in names:
+            values=[p[key] for p in profiles if p['variant']==name]
+            spans.append(f'{min(values):,.0f}—{max(values):,.0f}')
+        metric_table+='| '+label+' | '+' | '.join(spans)+' |\n'
+    large=summary[2]
+    note='''# 25 · 搬入时转置 A tile：宽加载减少，2048同期加速约1.085倍
+
+2026-11-09。用户提出把转置融入global→shared搬运，授权实现一版并说明改动与效果。本轮针对当前每线程4×4输出，只改A的shared布局与对应读写索引；global读取地址、B布局、16×16线程、64×64输出、K_TILE=32、单缓冲、同步和乘加源码顺序保持原样。未同时实施notes/24建议的编译期线程步长优化。
+
+## 三处核心改动
+
+1. 原As[64][32]改为显式16B起点对齐的Ats[32][68]，有效数据为32×64，末4列留空。每行68*4=272B保持16B对齐。
+2. 搬入时As[r][k]改为Ats[k][r]；右侧A的global地址、边界判断、加载任务分配不变。
+3. 计算时As[local_row+i][k]改为Ats[k][local_row+i]，每线程当前k需要的4个A连续。Bs[k][local_col+j]不变，仍连续读取4个B。数学运算仍为C=AB。
+
+新文件gemm/gemm_self_transpose_a.cu保留逐处Codex注释。默认gemm_self_re.cu仍是无padding的原版，方便学习比较；基线SHA256为e0746da45b8a956068ca57632600a1b1c7ac4a3499ee2e2dc0b35218d20f5788。
+
+## 为什么用68，及仍存在的代价
+
+若直接Ats[32][64]，一个warp连续读取原A一行后，转置写入shared时相邻线程相隔64个float，标量bank映射相同。使用行宽68后，bank步长4，分散到8个bank；标量模型仍有4路写冲突。行宽65虽能进一步分散标量写入，却不保持每行16B对齐。本轮选68作为一个简单的读写折中，没有扫描65/66等参数，没有引入swizzle，也没有显式float4指针转换。
+
+这是一次有额外写代价的局部重排，不将“融入搬运”描述为零成本操作。
+
+## 正确性和资源
+
+两版均以-O3 -lineinfo -arch=sm_120重新编译，七组逐输出CPU double检查全通过；五形状三次进程的64点CPU double计时前抽查全通过。测试覆盖小尺寸、非方阵、K尾部、输出边缘及跨tile。Compute Sanitizer此前被Windows WDDM调试接口阻挡，本轮未重试，不声称通过竞争/同步检测。
+
+| 资源 | 原版 | A局部转置 |
+|---|---:|---:|
+| 寄存器/线程 | 62 | 64 |
+| static shared/block | 16384B | 16896B |
+| local/线程 | 0B | 0B |
+| 理论block/SM | 4 | 4 |
+
+shared增加512B；寄存器增加2个/线程，本轮没有改变理论驻留block数。
+
+## 普通性能计时
+
+沿用五组固定随机输入，seed=20261107，CUDA events，5次预热、每进程3轮每轮20次启动；每版3次进程，按baseline/transA/transA/baseline/baseline/transA交错，取九轮批量平均耗时的中位数。分配、拷贝、校验不计时，相同缓冲不清L2。本表为新采同期数据，不与上午其他实验的绝对耗时直接排名。
+
+'''+table+f'''
+2048方阵由{large['baseline']['median_ms']:.6f}ms降到{large['transA']['median_ms']:.6f}ms，加速{large['speedup']:.3f}倍，耗时下降{(1-1/large['speedup'])*100:.2f}%。原版三次进程中位数1.643026/1.607760/1.600344ms，转置版1.481341/1.474832/1.482046ms，方向一致且本轮范围分离。
+
+其余形状报告观测值，不一概称稳定加速：128任务约10微秒，差异小；长方形有一次候选进程更慢，非整齐输入第三次候选进程明显变慢。非整齐输入表中1.303倍不能当成可稳定复现的30%收益。
+
+## 实际生成指令
+
+反汇编确认原计算循环含4条LDS.64+2条LDS.128和32条FFMA，对应2个k；转置版含16条LDS.128和128条FFMA，对应8个k。编译器自动改变展开方式，比较静态指令条数需按相同k数量归一化。
+
+原版平均每k有3条shared加载，候选每k2条；候选四个A和四个B均生成128位读取。源码未添加#pragma unroll或显式float4，但布局影响了编译器向量化和展开。不能把全部加速仅归因为一种指令变化。
+
+## 2048读取收益与写入代价
+
+Nsight Compute application replay、cache-control none、clock-control none，六次调用后采第七次。两版正反顺序各一轮，原始命令/CSV留存。只比较计数，profiler耗时不替代普通计时。
+
+'''+metric_table+'''
+动态shared加载指令从50,331,648降到33,554,432，减少三分之一；动态存储指令数不变。读取冲突减少约99.8%，写入冲突从约94万升到约1422万。读取wavefront减少约25%，写入wavefront明显增加。对本轮2048，综合读写和代码生成变化后的净结果仍加速约1.085倍。
+
+这支持“局部重排让计算取数更方便，有可能带来净收益”的思路，也展示了必须同时检查搬入shared和从shared取数的代价。没有把全kernel瓶颈唯一归因shared读取，未进一步采集候选全部调度和管线数据。
+
+## 当前状态与复现
+
+独立候选gemm/gemm_self_transpose_a.cu；默认测量入口继续默认原版，可通过GEMM_SELF_SOURCE选择候选。bench/check的选择机制与此前实验一致。
+
+notes/data/2026-11-09-gemm-transpose-a 保存两版实际源码、共同bench/check/resource/profile入口、编译命令、七组完整检查、三次进程原始计时、资源、SASS、计算循环摘录及两轮硬件计数器。build/transpose_a_2026-11-09内二进制和.ncu-rep忽略。experiment.py.txt是本轮编排脚本快照，prepare/measure/profile/inspect/record阶段可复现；prepare要求新目录，未运行可选focus阶段。
+
+本次没有继续更改B、引入显式float4、固定编译期线程步长或尝试其他布局。候选与记录尚未提交/push。
+
+参考：[shared bank映射](https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/#shared-memory-and-memory-banks)、[内存访问对齐](https://docs.nvidia.com/cuda/parallel-thread-execution/#addresses-as-operands)。
+'''
+    path=repo/'notes/25-gemm-transpose-a.md'
+    assert not path.exists()
+    path.write_text(note)
+    data=repo/'notes/data/2026-11-09-gemm-transpose-a'
+    data.mkdir(exist_ok=False)
+    for path in root.iterdir():
+        if path.is_file() and path.suffix in ['.json','.txt','.csv']:
+            shutil.copyfile(path,data/path.name)
+    for name in names:
+        for path in (root/name).iterdir():
+            if path.suffix in ['.cu','.txt','.json']:
+                shutil.copyfile(path,data/(f'{name}_{path.name}'+('.txt' if path.suffix=='.cu' else '')))
+    shutil.copyfile(Path(__file__),data/'experiment.py.txt')
+    readme=repo/'README.md'
+    text=readme.read_text()
+    anchor=next(line for line in text.splitlines() if 'notes/24-gemm-scheduler-diagnosis.md' in line)
+    text=text.replace(anchor,anchor+'\n| [25 · A tile局部转置](notes/25-gemm-transpose-a.md) | 计算取数连续且宽加载减少；2048同期约1.085倍加速，写冲突增加 |',1)
+    readme.write_text(text)
+    with (repo/'HANDOFF.md').open('a') as stream:
+        stream.write('\n\n2026-11-09：按用户要求实现A tile搬入时局部转置，独立gemm/gemm_self_transpose_a.cu。Ats[32][68]，16B对齐，写Ats[k][r]、读Ats[k][local_row+i]，B及global地址/线程/乘加源码不变；未实施编译期线程步长。七组完整检查和性能抽查通过。2048同期原版1.607760ms→候选1.481341ms（1.085倍、耗时降7.86%），三次进程方向一致。动态shared加载50331648→33554432，编译器自动k展开2→8且A/B均LDS.128；读取冲突约3360万→5.2—5.8万，写入冲突约94万→1422万。寄存器62→64、shared16384→16896B、理论仍4block/SM。小任务/非整齐结果有波动不外推。notes/25及原始数据已保存，默认仍无padding基线，未继续其他优化，未提交。\n')
+    print('Published standalone A-transpose candidate and reproducible experiment record.',flush=True)
+else:
+    raise ValueError(phase)

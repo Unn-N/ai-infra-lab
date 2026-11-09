@@ -1,0 +1,28 @@
+{
+  "k32": {
+    "launch__occupancy_limit_barriers": "24",
+    "launch__occupancy_limit_blocks": "24",
+    "launch__occupancy_limit_registers": "4",
+    "launch__occupancy_limit_shared_mem": "5",
+    "launch__occupancy_limit_warps": "6",
+    "launch__shared_mem_config_size": "102400",
+    "launch__shared_mem_per_block": "17920",
+    "launch__shared_mem_per_block_allocated": "17920",
+    "launch__shared_mem_per_block_driver": "1024",
+    "launch__shared_mem_per_block_dynamic": "0",
+    "launch__shared_mem_per_block_static": "16896"
+  },
+  "k64": {
+    "launch__occupancy_limit_barriers": "24",
+    "launch__occupancy_limit_blocks": "24",
+    "launch__occupancy_limit_registers": "4",
+    "launch__occupancy_limit_shared_mem": "2",
+    "launch__occupancy_limit_warps": "6",
+    "launch__shared_mem_config_size": "102400",
+    "launch__shared_mem_per_block": "34816",
+    "launch__shared_mem_per_block_allocated": "34816",
+    "launch__shared_mem_per_block_driver": "1024",
+    "launch__shared_mem_per_block_dynamic": "0",
+    "launch__shared_mem_per_block_static": "33792"
+  }
+}

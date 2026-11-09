@@ -1,0 +1,20 @@
+==WARNING== Note: Running with uncontrolled GPU caches. Profiling results may be inconsistent.
+==WARNING== Note: Running with unmodified GPU clocks. If not controlled otherwise, profiling results may be inconsistent.
+==PROF== Connected to process 678 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 1
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 678
+==PROF== Connected to process 691 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 2
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 691
+==PROF== Connected to process 704 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 3
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 704
+==PROF== Connected to process 717 (/home/unn/ai-infra-lab/build/scheduler_2026-11-09/profile)
+==PROF== Profiling "gemm_tiled": Application replay pass 4
+Profile target M=2048 N=2048 K=2048, config=64/32/4, C[0]=-23.8147
+==PROF== Disconnected from process 717
+==PROF== Creating report from application replay data: 0%......100%
+==PROF== Report: /home/unn/ai-infra-lab/build/scheduler_2026-11-09/source_r2.ncu-rep

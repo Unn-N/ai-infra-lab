@@ -1,0 +1,5 @@
+[
+  "/usr/local/cuda/bin/cuobjdump",
+  "--dump-sass",
+  "/home/unn/ai-infra-lab/build/padding_as2_2026-11-09/pad1/bench"
+]

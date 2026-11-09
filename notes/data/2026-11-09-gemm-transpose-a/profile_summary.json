@@ -1,0 +1,46 @@
+[
+  {
+    "gpu__time_duration.sum": 1433472.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 33593264.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 935097.0,
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 134256560.0,
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 9323705.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 50331648.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "variant": "baseline",
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 1323552.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 57515.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 14228623.0,
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 100720811.0,
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 22617231.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 33554432.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "variant": "transA",
+    "repeat": 1
+  },
+  {
+    "gpu__time_duration.sum": 1319424.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 52454.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 14216104.0,
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 100715750.0,
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 22604712.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 33554432.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "variant": "transA",
+    "repeat": 2
+  },
+  {
+    "gpu__time_duration.sum": 1431264.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": 33594618.0,
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": 944706.0,
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 134257914.0,
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": 9333314.0,
+    "smsp__sass_inst_executed_op_shared_ld.sum": 50331648.0,
+    "smsp__sass_inst_executed_op_shared_st.sum": 8388608.0,
+    "variant": "baseline",
+    "repeat": 2
+  }
+]

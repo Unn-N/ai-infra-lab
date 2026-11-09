@@ -1,0 +1,398 @@
+{
+  "repeat": 2,
+  "totals": {
+    "smsp__pcsamp_warps_issue_stalled_barrier_not_issued": 2147,
+    "smsp__pcsamp_warps_issue_stalled_branch_resolving_not_issued": 257,
+    "smsp__pcsamp_warps_issue_stalled_dispatch_stall_not_issued": 119,
+    "smsp__pcsamp_warps_issue_stalled_drain_not_issued": 134,
+    "smsp__pcsamp_warps_issue_stalled_lg_throttle_not_issued": 401,
+    "smsp__pcsamp_warps_issue_stalled_long_scoreboard_not_issued": 5249,
+    "smsp__pcsamp_warps_issue_stalled_math_pipe_throttle_not_issued": 353,
+    "smsp__pcsamp_warps_issue_stalled_membar_not_issued": 0,
+    "smsp__pcsamp_warps_issue_stalled_mio_throttle_not_issued": 6501,
+    "smsp__pcsamp_warps_issue_stalled_misc_not_issued": 0,
+    "smsp__pcsamp_warps_issue_stalled_no_instructions_not_issued": 303,
+    "smsp__pcsamp_warps_issue_stalled_not_selected_not_issued": 336,
+    "smsp__pcsamp_warps_issue_stalled_selected_not_issued": 0,
+    "smsp__pcsamp_warps_issue_stalled_short_scoreboard_not_issued": 3763,
+    "smsp__pcsamp_warps_issue_stalled_sleeping_not_issued": 0,
+    "smsp__pcsamp_warps_issue_stalled_tex_throttle_not_issued": 0,
+    "smsp__pcsamp_warps_issue_stalled_wait_not_issued": 3094
+  },
+  "top_lines": {
+    "stall_barrier (Not Issued)": [
+      {
+        "line": 75,
+        "source": "for (int i = 0; i < THREAD_TILE; ++i) a[i] = As[local_row + i][k];",
+        "samples": 1295
+      },
+      {
+        "line": 83,
+        "source": "__syncthreads();  // \u6240\u6709\u7ebf\u7a0b\u7528\u5b8c\u672c\u8f6e\u8f93\u5165\uff0c\u518d\u5141\u8bb8\u8986\u76d6 shared\u3002",
+        "samples": 852
+      },
+      {
+        "line": 32,
+        "source": "__global__ void gemm_tiled(const float* __restrict__ A, const float* __restrict__ B,",
+        "samples": 0
+      },
+      {
+        "line": 37,
+        "source": "const int tx = threadIdx.x;",
+        "samples": 0
+      }
+    ],
+    "stall_branch_resolving (Not Issued)": [
+      {
+        "line": 75,
+        "source": "for (int i = 0; i < THREAD_TILE; ++i) a[i] = As[local_row + i][k];",
+        "samples": 98
+      },
+      {
+        "line": 65,
+        "source": "Bs[k][c] = (k0 + k < K && block_col + c < N)",
+        "samples": 88
+      },
+      {
+        "line": 58,
+        "source": "As[r][k] = (block_row + r < M && k0 + k < K)",
+        "samples": 57
+      },
+      {
+        "line": 64,
+        "source": "const int c = index % OUTPUT_TILE;",
+        "samples": 9
+      }
+    ],
+    "stall_dispatch (Not Issued)": [
+      {
+        "line": 66,
+        "source": "? B[size_t(k0 + k) * N + block_col + c] : 0.0f;",
+        "samples": 28
+      },
+      {
+        "line": 75,
+        "source": "for (int i = 0; i < THREAD_TILE; ++i) a[i] = As[local_row + i][k];",
+        "samples": 24
+      },
+      {
+        "line": 65,
+        "source": "Bs[k][c] = (k0 + k < K && block_col + c < N)",
+        "samples": 18
+      },
+      {
+        "line": 59,
+        "source": "? A[size_t(block_row + r) * K + k0 + k] : 0.0f;",
+        "samples": 15
+      }
+    ],
+    "stall_drain (Not Issued)": [
+      {
+        "line": 94,
+        "source": "}",
+        "samples": 134
+      },
+      {
+        "line": 32,
+        "source": "__global__ void gemm_tiled(const float* __restrict__ A, const float* __restrict__ B,",
+        "samples": 0
+      },
+      {
+        "line": 37,
+        "source": "const int tx = threadIdx.x;",
+        "samples": 0
+      },
+      {
+        "line": 38,
+        "source": "const int ty = threadIdx.y;",
+        "samples": 0
+      }
+    ],
+    "stall_lg (Not Issued)": [
+      {
+        "line": 90,
+        "source": "C[size_t(row + i) * N + col + j] = acc[i][j];",
+        "samples": 233
+      },
+      {
+        "line": 59,
+        "source": "? A[size_t(block_row + r) * K + k0 + k] : 0.0f;",
+        "samples": 95
+      },
+      {
+        "line": 66,
+        "source": "? B[size_t(k0 + k) * N + block_col + c] : 0.0f;",
+        "samples": 73
+      },
+      {
+        "line": 32,
+        "source": "__global__ void gemm_tiled(const float* __restrict__ A, const float* __restrict__ B,",
+        "samples": 0
+      }
+    ],
+    "stall_long_sb (Not Issued)": [
+      {
+        "line": 58,
+        "source": "As[r][k] = (block_row + r < M && k0 + k < K)",
+        "samples": 3406
+      },
+      {
+        "line": 65,
+        "source": "Bs[k][c] = (k0 + k < K && block_col + c < N)",
+        "samples": 1754
+      },
+      {
+        "line": 59,
+        "source": "? A[size_t(block_row + r) * K + k0 + k] : 0.0f;",
+        "samples": 74
+      },
+      {
+        "line": 66,
+        "source": "? B[size_t(k0 + k) * N + block_col + c] : 0.0f;",
+        "samples": 15
+      }
+    ],
+    "stall_math (Not Issued)": [
+      {
+        "line": 66,
+        "source": "? B[size_t(k0 + k) * N + block_col + c] : 0.0f;",
+        "samples": 140
+      },
+      {
+        "line": 75,
+        "source": "for (int i = 0; i < THREAD_TILE; ++i) a[i] = As[local_row + i][k];",
+        "samples": 55
+      },
+      {
+        "line": 59,
+        "source": "? A[size_t(block_row + r) * K + k0 + k] : 0.0f;",
+        "samples": 47
+      },
+      {
+        "line": 58,
+        "source": "As[r][k] = (block_row + r < M && k0 + k < K)",
+        "samples": 43
+      }
+    ],
+    "stall_membar (Not Issued)": [
+      {
+        "line": 32,
+        "source": "__global__ void gemm_tiled(const float* __restrict__ A, const float* __restrict__ B,",
+        "samples": 0
+      },
+      {
+        "line": 37,
+        "source": "const int tx = threadIdx.x;",
+        "samples": 0
+      },
+      {
+        "line": 38,
+        "source": "const int ty = threadIdx.y;",
+        "samples": 0
+      },
+      {
+        "line": 39,
+        "source": "const int block_row = blockIdx.y * OUTPUT_TILE;",
+        "samples": 0
+      }
+    ],
+    "stall_mio (Not Issued)": [
+      {
+        "line": 75,
+        "source": "for (int i = 0; i < THREAD_TILE; ++i) a[i] = As[local_row + i][k];",
+        "samples": 3576
+      },
+      {
+        "line": 76,
+        "source": "for (int j = 0; j < THREAD_TILE; ++j) b[j] = Bs[k][local_col + j];",
+        "samples": 1078
+      },
+      {
+        "line": 59,
+        "source": "? A[size_t(block_row + r) * K + k0 + k] : 0.0f;",
+        "samples": 547
+      },
+      {
+        "line": 66,
+        "source": "? B[size_t(k0 + k) * N + block_col + c] : 0.0f;",
+        "samples": 408
+      }
+    ],
+    "stall_misc (Not Issued)": [
+      {
+        "line": 32,
+        "source": "__global__ void gemm_tiled(const float* __restrict__ A, const float* __restrict__ B,",
+        "samples": 0
+      },
+      {
+        "line": 37,
+        "source": "const int tx = threadIdx.x;",
+        "samples": 0
+      },
+      {
+        "line": 38,
+        "source": "const int ty = threadIdx.y;",
+        "samples": 0
+      },
+      {
+        "line": 39,
+        "source": "const int block_row = blockIdx.y * OUTPUT_TILE;",
+        "samples": 0
+      }
+    ],
+    "stall_no_inst (Not Issued)": [
+      {
+        "line": 58,
+        "source": "As[r][k] = (block_row + r < M && k0 + k < K)",
+        "samples": 165
+      },
+      {
+        "line": 65,
+        "source": "Bs[k][c] = (k0 + k < K && block_col + c < N)",
+        "samples": 65
+      },
+      {
+        "line": 75,
+        "source": "for (int i = 0; i < THREAD_TILE; ++i) a[i] = As[local_row + i][k];",
+        "samples": 35
+      },
+      {
+        "line": 32,
+        "source": "__global__ void gemm_tiled(const float* __restrict__ A, const float* __restrict__ B,",
+        "samples": 16
+      }
+    ],
+    "stall_not_selected (Not Issued)": [
+      {
+        "line": 75,
+        "source": "for (int i = 0; i < THREAD_TILE; ++i) a[i] = As[local_row + i][k];",
+        "samples": 90
+      },
+      {
+        "line": 66,
+        "source": "? B[size_t(k0 + k) * N + block_col + c] : 0.0f;",
+        "samples": 50
+      },
+      {
+        "line": 65,
+        "source": "Bs[k][c] = (k0 + k < K && block_col + c < N)",
+        "samples": 40
+      },
+      {
+        "line": 58,
+        "source": "As[r][k] = (block_row + r < M && k0 + k < K)",
+        "samples": 39
+      }
+    ],
+    "stall_selected (Not Issued)": [
+      {
+        "line": 32,
+        "source": "__global__ void gemm_tiled(const float* __restrict__ A, const float* __restrict__ B,",
+        "samples": 0
+      },
+      {
+        "line": 37,
+        "source": "const int tx = threadIdx.x;",
+        "samples": 0
+      },
+      {
+        "line": 38,
+        "source": "const int ty = threadIdx.y;",
+        "samples": 0
+      },
+      {
+        "line": 39,
+        "source": "const int block_row = blockIdx.y * OUTPUT_TILE;",
+        "samples": 0
+      }
+    ],
+    "stall_short_sb (Not Issued)": [
+      {
+        "line": 79,
+        "source": "acc[i][j] += a[i] * b[j];",
+        "samples": 3062
+      },
+      {
+        "line": 59,
+        "source": "? A[size_t(block_row + r) * K + k0 + k] : 0.0f;",
+        "samples": 329
+      },
+      {
+        "line": 65,
+        "source": "Bs[k][c] = (k0 + k < K && block_col + c < N)",
+        "samples": 181
+      },
+      {
+        "line": 58,
+        "source": "As[r][k] = (block_row + r < M && k0 + k < K)",
+        "samples": 49
+      }
+    ],
+    "stall_sleeping (Not Issued)": [
+      {
+        "line": 32,
+        "source": "__global__ void gemm_tiled(const float* __restrict__ A, const float* __restrict__ B,",
+        "samples": 0
+      },
+      {
+        "line": 37,
+        "source": "const int tx = threadIdx.x;",
+        "samples": 0
+      },
+      {
+        "line": 38,
+        "source": "const int ty = threadIdx.y;",
+        "samples": 0
+      },
+      {
+        "line": 39,
+        "source": "const int block_row = blockIdx.y * OUTPUT_TILE;",
+        "samples": 0
+      }
+    ],
+    "stall_tex (Not Issued)": [
+      {
+        "line": 32,
+        "source": "__global__ void gemm_tiled(const float* __restrict__ A, const float* __restrict__ B,",
+        "samples": 0
+      },
+      {
+        "line": 37,
+        "source": "const int tx = threadIdx.x;",
+        "samples": 0
+      },
+      {
+        "line": 38,
+        "source": "const int ty = threadIdx.y;",
+        "samples": 0
+      },
+      {
+        "line": 39,
+        "source": "const int block_row = blockIdx.y * OUTPUT_TILE;",
+        "samples": 0
+      }
+    ],
+    "stall_wait (Not Issued)": [
+      {
+        "line": 75,
+        "source": "for (int i = 0; i < THREAD_TILE; ++i) a[i] = As[local_row + i][k];",
+        "samples": 721
+      },
+      {
+        "line": 66,
+        "source": "? B[size_t(k0 + k) * N + block_col + c] : 0.0f;",
+        "samples": 540
+      },
+      {
+        "line": 59,
+        "source": "? A[size_t(block_row + r) * K + k0 + k] : 0.0f;",
+        "samples": 454
+      },
+      {
+        "line": 58,
+        "source": "As[r][k] = (block_row + r < M && k0 + k < K)",
+        "samples": 371
+      }
+    ]
+  }
+}
