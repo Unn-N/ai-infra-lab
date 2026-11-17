@@ -1,5 +1,7 @@
 # ai-infra-lab
 
+> **2026-11-17 检查点：** notes/31—36与对应实验成果已提交推送；当前大方阵路线优先保留双层流水线，warp重排尚未证实净收益。当前文件、验证范围及续学入口见[检查点](notes/37-gemm-checkpoint.md)。性能按[桌面显卡测量约定](notes/04-measurement-protocol.md)解释。
+
 > **2026-11-10 对照：** 最新float4与严格FP32 cuBLAS同期2048耗时1.245/0.786ms，库快1.58倍；指令与资源差异见[同精度差距分析](notes/31-gemm-reference-gap.md)。暂不进入Tensor Core。
 
 > **2026-11-09 收尾：** 已完成A局部转置、严格FP32参照、编译期线程分工及float4四组实验；最新候选、验证边界和下次亲手编码入口见 [当日收尾](notes/30-gemm-day-end.md)。
@@ -127,20 +129,17 @@ nvcc -O3 -arch=sm_120 gemm/gemm_self_bench.cu -o build/gemm_self_bench && ./buil
 | [34 · padding版双缓冲](notes/34-gemm-padded-double-buffer.md) | A预取+B异步，81KiB shared；2048比同结构单缓冲约快1.08倍 |
 | [35 · shared到寄存器双缓冲](notes/35-gemm-register-pipeline.md) | 保留外层流水线；2048配对加速约1.11倍，128寄存器且无溢出 |
 | [36 · warp输出分工](notes/36-gemm-warp-layout.md) | 每warp 16×128→32×64；2048配对约1.004倍，未证实稳定收益 |
+| [37 · 实验检查点](notes/37-gemm-checkpoint.md) | 提交状态、当前源码分工、验证边界与桌面显卡测量约定 |
 
 **编译产物统一输出到 `build/`**，源码目录保持干净。`build/` 已在 `.gitignore` 里，不用每次想“这个要不要提交”。
 
 硬件：RTX 5070（48 SM / 12 GB GDDR7 / 峰值带宽 ≈ 672 GB/s）
 
-### ⚠️ 测性能前先做这些
+### 桌面显卡上的测量约定
 
-**测量噪声可能比你要测的优化还大。** 这台机器同时还在渲染 Windows 桌面，桌面一刷新就抢显存带宽。
+实验卡同时承担日常桌面与前台程序，性能可能受外部占用和频率变化影响。默认接受这一环境，比较时优先相近时间交错/配对测量，保留原值、分布和胜负方向；日常学习不要求每轮关闭所有程序。
 
-1. 关 **Wallpaper Engine** 等动态壁纸
-2. 关任何 GPU 加速程序（安卓模拟器、MAA、浏览器视频）
-3. **每个配置跑 3 次，取中位数**（单次数字不可用，哪怕环境干净）
-
-历史测量中出现过明显波动和离群值，因此比较时需保留多次运行数据与中位数；不保证执行这些步骤后噪声一定降到某个固定范围。`%spec` 超过 100% 时应检查字节数假设、缓存和计时口径，不能解释为真实 DRAM 带宽突破上限。详见 [`notes/04-measurement-protocol.md`](notes/04-measurement-protocol.md)。
+小差异或方向不一致写为“当前噪声下尚未分辨出稳定收益”；需要辨别细微变化时再安排负载较平稳的窗口。中位数、profiler或锁频都不能自动排除干扰。完整约定见[测量协议](notes/04-measurement-protocol.md)。
 
 ---
 
@@ -157,4 +156,6 @@ nvcc -O3 -arch=sm_120 gemm/gemm_self_bench.cu -o build/gemm_self_bench && ./buil
 - [x] 完成首轮 GEMM 寄存器分块与性能实验里程碑；保留原始数据和独立正确性入口
 
 - [x] 完成GEMM局部转置、K64、严格FP32参照、编译期线程分工与float4四组对照，见notes/23—30
-- [ ] 下次由用户亲手写A的float4读取与转置写入，Codex先提示/review，见notes/30
+- [ ] 可选练习：亲手写A的float4读取与转置写入，见notes/30；不是继续学习的前置条件
+- [x] 保存8×8分块、padding、两层双缓冲与warp分工对照，见notes/31—37
+- [ ] 下一项优化由用户理解方案后选择，以notes/35作为当前大方阵路线基线
