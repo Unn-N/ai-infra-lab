@@ -12,6 +12,11 @@
 #endif
 #include GEMM_SELF_SOURCE
 
+#ifndef GEMM_DYNAMIC_SHARED_BYTES
+#define GEMM_DYNAMIC_SHARED_BYTES 0
+#endif
+
+
 #include <algorithm>
 #include <array>
 #include <random>
@@ -45,6 +50,12 @@ static bool check_samples(const std::vector<float>& a, const std::vector<float>&
 }
 
 int main() {
+
+    // [Codex 测量适配] 仅启动前申请动态shared，设置本身不进入计时区间。
+    if (GEMM_DYNAMIC_SHARED_BYTES > 0)
+        CUDA_CHECK(cudaFuncSetAttribute(gemm_tiled, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                       int(GEMM_DYNAMIC_SHARED_BYTES)));
+
     // 学习用的固定观察范围：小/中/大方阵、长方形、非整齐边缘。
     // 后续比较改动时保持这张表不变，不宣称代表所有 GEMM 输入。
     const int shapes[][3] = {
@@ -94,7 +105,7 @@ int main() {
         const dim3 block(OUTPUT_TILE / THREAD_TILE, OUTPUT_TILE / THREAD_TILE);
         const dim3 grid((N + OUTPUT_TILE - 1) / OUTPUT_TILE,
                         (M + OUTPUT_TILE - 1) / OUTPUT_TILE);
-        auto launch = [&]() { gemm_tiled<<<grid, block>>>(dA, dB, dC, M, N, K); };
+        auto launch = [&]() { gemm_tiled<<<grid, block, GEMM_DYNAMIC_SHARED_BYTES>>>(dA, dB, dC, M, N, K); };
 
         // 把输出先填成 NaN 的字节模式，抽查时也能发现没有写出的采样位置。
         CUDA_CHECK(cudaMemset(dC, 0xff, bytesC));

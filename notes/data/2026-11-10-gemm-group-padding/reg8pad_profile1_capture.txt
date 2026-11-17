@@ -1,0 +1,20 @@
+==WARNING== Note: Running with uncontrolled GPU caches. Profiling results may be inconsistent.
+==WARNING== Note: Running with unmodified GPU clocks. If not controlled otherwise, profiling results may be inconsistent.
+==PROF== Connected to process 717 (/home/unn/ai-infra-lab/build/group_padding_2026-11-10/reg8pad/profile)
+==PROF== Profiling "gemm_tiled" - 0: Application replay pass 1
+Profile 2048,2048,2048 config=128/32/8 C[0]=-23.8147
+==PROF== Disconnected from process 717
+==PROF== Connected to process 730 (/home/unn/ai-infra-lab/build/group_padding_2026-11-10/reg8pad/profile)
+==PROF== Profiling "gemm_tiled" - 0: Application replay pass 2
+Profile 2048,2048,2048 config=128/32/8 C[0]=-23.8147
+==PROF== Disconnected from process 730
+==PROF== Connected to process 743 (/home/unn/ai-infra-lab/build/group_padding_2026-11-10/reg8pad/profile)
+==PROF== Profiling "gemm_tiled" - 0: Application replay pass 3
+Profile 2048,2048,2048 config=128/32/8 C[0]=-23.8147
+==PROF== Disconnected from process 743
+==PROF== Connected to process 756 (/home/unn/ai-infra-lab/build/group_padding_2026-11-10/reg8pad/profile)
+==PROF== Profiling "gemm_tiled" - 0: Application replay pass 4
+Profile 2048,2048,2048 config=128/32/8 C[0]=-23.8147
+==PROF== Disconnected from process 756
+==PROF== Creating report from application replay data: 0%......100%
+==PROF== Report: /home/unn/ai-infra-lab/build/group_padding_2026-11-10/reg8pad_profile1.ncu-rep

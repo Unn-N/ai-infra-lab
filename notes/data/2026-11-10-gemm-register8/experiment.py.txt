@@ -1,0 +1,346 @@
+from pathlib import Path
+import subprocess, json, csv, io, shutil, statistics, sys, hashlib
+
+REPO = Path('/home/unn/ai-infra-lab')
+ROOT = REPO/'build/register8_2026-11-10'
+NVCC = '/usr/local/cuda/bin/nvcc'
+NCU = '/usr/local/cuda/bin/ncu'
+NAMES = ['reg4', 'reg8']
+OLD = REPO/'notes/data/2026-11-09-gemm-float4-factorial'
+METRICS = ['gpu__time_duration.sum', 'smsp__inst_executed.sum',
+           'smsp__sass_inst_executed_op_shared_ld.sum',
+           'smsp__sass_inst_executed_op_global_ld.sum',
+           'smsp__inst_executed.sum',
+           'sm__inst_executed_pipe_fma.avg.pct_of_peak_sustained_elapsed',
+           'sm__warps_active.avg.pct_of_peak_sustained_active',
+           'smsp__issue_active.avg.pct_of_peak_sustained_active',
+           'sm__cycles_elapsed.avg.per_second',
+           'l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum',
+           'l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum']
+METRICS = list(dict.fromkeys(METRICS))
+
+def run(cmd, tag):
+    (ROOT/(tag+'.command.json')).write_text(json.dumps(cmd, indent=2))
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    (ROOT/(tag+'.txt')).write_text(p.stdout+p.stderr)
+    if p.returncode:
+        print((p.stdout+p.stderr)[-8000:], flush=True)
+        raise RuntimeError((tag,p.returncode))
+    return p.stdout
+
+def save(name, value):
+    (ROOT/name).write_text(json.dumps(value, indent=2))
+
+phase = sys.argv[1]
+if phase == 'prepare':
+    ROOT.mkdir(exist_ok=False)
+    base = (REPO/'gemm/gemm_self_float4.cu').read_text()
+    assert hashlib.sha256(base.encode()).hexdigest() == '4ee9339437cf7c087a23a7935e0f199aa0deb7092a22b750be72ac6a4a280801'
+    candidate = base.replace('OUTPUT_TILE = 64;', 'OUTPUT_TILE = 128;').replace('THREAD_TILE = 4;', 'THREAD_TILE = 8;')
+    # Comments describe this candidate, while the only semantic changes are the two constants.
+    replacements = [
+        ('一个线程负责 4×4 个输出', '一个线程负责 8×8 个输出'),
+        ('64×64 输出块，每线程 4×4 输出', '128×128 输出块，每线程 8×8 输出'),
+        ('A的有效64×32输入块，在shared中按[k][r]存成32×64', 'A的有效128×32输入块，在shared中按[k][r]存成32×128'),
+        ('当前行跨度68*4=272B', '当前行跨度132*4=528B'),
+        ('跨度64会使', '跨度128会使'),
+        ('；68可分散到8个bank', '；132可分散到8个bank'),
+        ('跨所有 K 轮次保留十六个部分和', '跨所有 K 轮次保留六十四个部分和'),
+        ('每线程每轮各搬两组A、两组B', '每线程每轮各搬四组A、四组B'),
+        ('Bs每行64个float', 'Bs每行128个float'),
+        ('每个 k 取四个 A、四个 B，交叉组合做十六次乘加', '每个 k 取八个 A、八个 B，交叉组合做六十四次乘加'),
+        ('当前k所需四个A在shared中连续', '当前k所需八个A在shared中连续'),
+        ('十六个结果分别检查边界', '六十四个结果分别检查边界'),
+        ('64×64 输出 / 每线程 4×4 输出', '128×128 输出 / 每线程 8×8 输出'),
+    ]
+    for before, after in replacements: candidate = candidate.replace(before,after)
+    candidate = '// [Codex 8×8实验] 仅扩大输出/寄存器分块；16×16线程、K32、转置、float4、单缓冲均保留。\n'+candidate
+    metadata = {}
+    profile = '''#define GEMM_SELF_BENCH
+#include "gemm_self_re.cu"
+#include <cuda_profiler_api.h>
+#include <vector>
+#include <random>
+int main(int argc,char** argv) {
+    if(argc!=4) return 2;
+    const int M=std::atoi(argv[1]),N=std::atoi(argv[2]),K=std::atoi(argv[3]);
+    std::vector<float>a(size_t(M)*K),b(size_t(K)*N);
+    std::mt19937 rng(20261107);
+    std::uniform_real_distribution<float> value(-1.0f,1.0f);
+    // Match the unchanged five-shape benchmark input stream for the 2048 target.
+    for(size_t i=0;i<2*size_t(128)*128+2*size_t(512)*512;++i)(void)value(rng);
+    for(float& x:a)x=value(rng);
+    for(float& x:b)x=value(rng);
+    float *da=nullptr,*db=nullptr,*dc=nullptr;
+    CUDA_CHECK(cudaMalloc(&da,a.size()*sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&db,b.size()*sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&dc,size_t(M)*N*sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(da,a.data(),a.size()*sizeof(float),cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(db,b.data(),b.size()*sizeof(float),cudaMemcpyHostToDevice));
+    const dim3 block(BLOCK_SIDE,BLOCK_SIDE);
+    const dim3 grid((N+OUTPUT_TILE-1)/OUTPUT_TILE,(M+OUTPUT_TILE-1)/OUTPUT_TILE);
+    // Validation-equivalent call plus twenty warmups; only call 22 is profiled.
+    for(int i=0;i<22;++i){
+        if(i==21)CUDA_CHECK(cudaProfilerStart());
+        gemm_tiled<<<grid,block>>>(da,db,dc,M,N,K);
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaDeviceSynchronize());
+    }
+    CUDA_CHECK(cudaProfilerStop());
+    float first=0;
+    CUDA_CHECK(cudaMemcpy(&first,dc,sizeof(float),cudaMemcpyDeviceToHost));
+    printf("Profile %d,%d,%d config=%d/%d/%d C[0]=%g\\n",M,N,K,OUTPUT_TILE,K_TILE,THREAD_TILE,first);
+    CUDA_CHECK(cudaFree(da));CUDA_CHECK(cudaFree(db));CUDA_CHECK(cudaFree(dc));
+}
+'''
+    for name,source in [('reg4',base),('reg8',candidate)]:
+        folder = ROOT/name
+        folder.mkdir()
+        (folder/'gemm_self_re.cu').write_text(source)
+        bench = (OLD/'trans_float4_gemm_self_bench.cu.txt').read_text()
+        check = (OLD/'trans_float4_gemm_self_check.cu.txt').read_text()
+        assert '{67, 69, 36}};' in check
+        check = check.replace('{67, 69, 36}};', '{67, 69, 36}, {128, 128, 128}, {257, 260, 68}};')
+        (folder/'bench.cu').write_text(bench)
+        (folder/'check.cu').write_text(check)
+        (folder/'resource.cu').write_text((OLD/'trans_float4_resource.cu.txt').read_text())
+        (folder/'profile.cu').write_text(profile)
+        for target in ['bench','check','resource','profile']:
+            out = run([NVCC,'-O3','-lineinfo','-arch=sm_120','-Xptxas=-v',str(folder/(target+'.cu')),
+                       '-o',str(folder/target)],name+'_compile_'+target)
+        checks = run([str(folder/'check')],name+'_check')
+        assert checks.count('PASS M=') == 12,checks
+        resource = json.loads(run([str(folder/'resource')],name+'_resource'))
+        save(name+'_resource.json',resource)
+        metadata[name] = {'source_sha256':hashlib.sha256(source.encode()).hexdigest(), 'resource':resource}
+        print(name,'12 full-output checks PASS',resource,flush=True)
+    save('metadata.json',metadata)
+elif phase == 'measure':
+    runs=[]
+    counts=dict.fromkeys(NAMES,0)
+    for name in ['reg4','reg8','reg8','reg4','reg4','reg8']:
+        counts[name]+=1
+        output=run([str(ROOT/name/'bench')],name+'_run'+str(counts[name]))
+        rows=[]
+        for line in output.splitlines():
+            p=line.split()
+            if len(p)==9 and all(x.isdigit() for x in p[:3]):
+                rows.append({'shape':list(map(int,p[:3])),'rounds_ms':list(map(float,p[3:6])),
+                             'median_ms':float(p[6]),'sampled_maxerr':float(p[8])})
+        assert len(rows)==5 and 'All sampled checks PASS' in output,output
+        runs.append({'variant':name,'repeat':counts[name],'rows':rows})
+        print(name,counts[name],[r['median_ms'] for r in rows],flush=True)
+    summary=[]
+    for index in range(5):
+        entry={'shape':runs[0]['rows'][index]['shape']}
+        for name in NAMES:
+            values=[r['rows'][index] for r in runs if r['variant']==name]
+            entry[name]={'median_ms':statistics.median([x for r in values for x in r['rounds_ms']]),
+                         'all_rounds_ms':[x for r in values for x in r['rounds_ms']],
+                         'process_medians_ms':[r['median_ms'] for r in values]}
+        entry['reg8_speedup']=entry['reg4']['median_ms']/entry['reg8']['median_ms']
+        entry['reg8_time_change_pct']=100*(entry['reg8']['median_ms']/entry['reg4']['median_ms']-1)
+        summary.append(entry)
+    save('runs.json',runs);save('summary.json',summary)
+    print(json.dumps(summary,indent=2),flush=True)
+elif phase == 'sustained':
+    import re
+    for name in NAMES:
+        folder=ROOT/name
+        source=(folder/'bench.cu').read_text()
+        source,count=re.subn(r'const int shapes\[\]\[3\] = \{.*?\n    \};',
+                             'const int shapes[][3] = {{2048, 2048, 2048}};',source,count=1,flags=re.S)
+        assert count==1
+        assert 'constexpr int repeats = 100;' in source
+        source=source.replace('constexpr int repeats = 100;', 'constexpr int repeats = 1000;')
+        anchor='std::uniform_real_distribution<float> value(-1.0f, 1.0f);'
+        assert source.count(anchor)==1
+        source=source.replace(anchor,anchor+'\n    // Same 2048 data stream as the five-shape run.\n    for(size_t i=0;i<2*size_t(128)*128+2*size_t(512)*512;++i)(void)value(random);')
+        (folder/'sustained.cu').write_text(source)
+        run([NVCC,'-O3','-lineinfo','-arch=sm_120',str(folder/'sustained.cu'),'-o',str(folder/'sustained')],name+'_compile_sustained')
+    results=[];counts=dict.fromkeys(NAMES,0)
+    for name in ['reg8','reg4','reg4','reg8','reg8','reg4']:
+        counts[name]+=1
+        output=run([str(ROOT/name/'sustained')],name+'_sustained'+str(counts[name]))
+        rows=[]
+        for line in output.splitlines():
+            p=line.split()
+            if len(p)==9 and all(x.isdigit() for x in p[:3]):
+                rows.append({'shape':list(map(int,p[:3])),'rounds_ms':list(map(float,p[3:6])),'median_ms':float(p[6])})
+        assert len(rows)==1 and 'All sampled checks PASS' in output
+        results.append({'variant':name,'repeat':counts[name],**rows[0]})
+        print(name,counts[name],rows[0],flush=True)
+    summary={}
+    for name in NAMES:
+        selected=[r for r in results if r['variant']==name]
+        summary[name]={'median_ms':statistics.median([v for r in selected for v in r['rounds_ms']]),
+                       'all_rounds_ms':[v for r in selected for v in r['rounds_ms']],
+                       'process_medians_ms':[r['median_ms'] for r in selected]}
+    summary['reg8_speedup']=summary['reg4']['median_ms']/summary['reg8']['median_ms']
+    summary['reg8_time_change_pct']=100*(summary['reg8']['median_ms']/summary['reg4']['median_ms']-1)
+    save('sustained_runs.json',results);save('sustained_summary.json',summary)
+    print(json.dumps(summary,indent=2),flush=True)
+elif phase == 'profile':
+    results=[]
+    for repeat,order in enumerate([NAMES,list(reversed(NAMES))],1):
+        for name in order:
+            tag=name+'_profile'+str(repeat)
+            run([NCU,'--profile-from-start','off','--replay-mode','application','--cache-control','none',
+                 '--clock-control','none','--section','LaunchStats','--section','InstructionStats',
+                 '--metrics',','.join(METRICS),'--export',str(ROOT/tag),'--force-overwrite',
+                 str(ROOT/name/'profile'),'2048','2048','2048'],tag+'_capture')
+            raw=run([NCU,'--import',str(ROOT/(tag+'.ncu-rep')),'--page','raw','--csv',
+                     '--print-units','base'],tag+'_raw')
+            rows=[r for r in csv.DictReader(io.StringIO(raw)) if r.get('ID','').isdigit()]
+            assert len(rows)==1
+            row=rows[0]
+            entry={'variant':name,'repeat':repeat}
+            for key,value in row.items():
+                if key in METRICS or key.startswith('launch__') or 'spilling' in key:
+                    try:entry[key]=float(value.replace(',',''))
+                    except (ValueError,AttributeError):entry[key]=value
+            for key in METRICS:assert isinstance(entry.get(key),(float,int)),(key,entry.get(key))
+            results.append(entry)
+            save('profile_summary.json',results)
+            print(name,repeat,{k:entry[k] for k in METRICS},flush=True)
+    sys.path.insert(0,'/opt/nvidia/nsight-compute/2026.2.1/extras/python')
+    import ncu_report
+    arrays={}
+    for name in NAMES:
+        context=ncu_report.load_report(str(ROOT/(name+'_profile1.ncu-rep')))
+        action=context.range_by_idx(0).action_by_idx(0)
+        arrays[name]={}
+        for key in ['sass__inst_executed_per_opcode','sass__inst_executed_per_opcode_category',
+                    'sass__thread_inst_executed_true_per_opcode']:
+            metric=action.metric_by_name(key);ids=metric.correlation_ids()
+            arrays[name][key]={str(ids.value(i) if ids else i):metric.value(i) for i in range(metric.num_instances())}
+        sass=run([NCU,'--import',str(ROOT/(name+'_profile1.ncu-rep')),'--page','source',
+                  '--print-source','sass'],name+'_sass')
+    save('opcode_arrays.json',arrays)
+    print('Saved opcode arrays and SASS',flush=True)
+elif phase == 'record':
+    summary=json.loads((ROOT/'summary.json').read_text())
+    profiles=json.loads((ROOT/'profile_summary.json').read_text())
+    metadata=json.loads((ROOT/'metadata.json').read_text())
+    arrays=json.loads((ROOT/'opcode_arrays.json').read_text())
+    sustained=json.loads((ROOT/'sustained_summary.json').read_text())
+    assert len(profiles)==4
+    assert (ROOT/'reg4/gemm_self_re.cu').read_bytes()==(REPO/'gemm/gemm_self_float4.cu').read_bytes()
+    import re
+    strip=lambda t: re.sub(r'\s+', '', re.sub(r'//[^\n]*','',t))
+    expected=(ROOT/'reg4/gemm_self_re.cu').read_text().replace('OUTPUT_TILE = 64;','OUTPUT_TILE = 128;').replace('THREAD_TILE = 4;','THREAD_TILE = 8;')
+    assert strip((ROOT/'reg8/gemm_self_re.cu').read_text())==strip(expected), 'Unexpected semantic code change'
+    published=REPO/'gemm/gemm_self_float4_reg8.cu'
+    assert not published.exists()
+    shutil.copyfile(ROOT/'reg8/gemm_self_re.cu',published)
+    table='| M,N,K | 原64/4 ms | 新128/8 ms | 新版加速比 | 新版耗时变化 |\n|---|---:|---:|---:|---:|\n'
+    for row in summary:
+        table+='| '+', '.join(map(str,row['shape']))+f" | {row['reg4']['median_ms']:.6f} | {row['reg8']['median_ms']:.6f} | {row['reg8_speedup']:.3f}× | {row['reg8_time_change_pct']:+.2f}% |\n"
+    resources='| 资源 | 原64/4 | 新128/8 |\n|---|---:|---:|\n'
+    for label,key in [('线程/block','threads'),('寄存器/线程','regs'),('static shared/block B','static_shared'),
+                      ('local/线程 B','local'),('理论block/SM','blocks_per_SM')]:
+        resources+='| '+label+' | '+' | '.join(str(metadata[n]['resource'][key]) for n in NAMES)+' |\n'
+    inst='| 2048 warp执行次数 | 原64/4 | 新128/8 |\n|---|---:|---:|\n'
+    for label,key in [('全部指令',None),('FFMA','FFMA'),('shared读取LDS','LDS'),('global读取LDG','LDG'),
+                      ('shared写入STS','STS'),('同步BAR','BAR')]:
+        values=[]
+        for n in NAMES:
+            a=arrays[n]['sass__inst_executed_per_opcode']
+            values.append(sum(a.values()) if key is None else a.get(key,0))
+        inst+=f'| {label} | {values[0]:,.0f} | {values[1]:,.0f} |\n'
+    profile_table='| 2048指标 | 原64/4两轮 | 新128/8两轮 |\n|---|---:|---:|\n'
+    for label,key in [('FMA elapsed吞吐 %','sm__inst_executed_pipe_fma.avg.pct_of_peak_sustained_elapsed'),
+                      ('active warp占用 %','sm__warps_active.avg.pct_of_peak_sustained_active'),
+                      ('active周期发射 %','smsp__issue_active.avg.pct_of_peak_sustained_active'),
+                      ('SM时钟Hz','sm__cycles_elapsed.avg.per_second'),
+                      ('shared读bank冲突','l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum'),
+                      ('shared写bank冲突','l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum')]:
+        spans=[]
+        for n in NAMES:
+            values=[p[key] for p in profiles if p['variant']==n]
+            spans.append(f'{min(values):,.2f}—{max(values):,.2f}')
+        profile_table+='| '+label+' | '+' | '.join(spans)+' |\n'
+    note=f'''# 32 · 扩大寄存器分块：128输出、每线程8×8
+
+2026-11-10。用户从cuBLAS高寄存器投入、低驻留但更快的结果提出假设：先扩大寄存器分块，再考虑与之配套的双缓冲。本轮只实施第一步。
+
+## 单项改动与数据流
+
+基于gemm_self_float4.cu，新独立文件gemm_self_float4_reg8.cu。仅语义改动OUTPUT_TILE64→128、THREAD_TILE4→8；K_TILE32、16×16=256线程、A局部转置及+4 padding、float4读取与B宽写、单缓冲、同步位置及安全标量回退均保留。其他文本改动仅把注释中的具体数字同步更新。
+
+每线程acc16→64个；每个k读取4A+4B→8A+8B，完成16→64次乘加。源码层的shared标量需求/乘加减半，实际指令是否同步变化由下方采集确认。Ats[32][132]、Bs[32][128]，static shared=33,280B=32.5KiB；每线程每轮分别搬四组float4 A和B。2048输出grid32×32→16×16，block1024→256。
+
+基线SHA256={metadata['reg4']['source_sha256']}。
+候选SHA256={metadata['reg8']['source_sha256']}。
+
+## 正确性与编译
+
+两版均-O3 -lineinfo -arch=sm_120编译，并记录ptxas -v资源。十二组全输出CPU double检查全部PASS：之前十组加(128,128,128)、(257,260,68)，覆盖128 tile边界、多tile、8×8线程尾部、K尾部及向量/标量分支。全部计时前64点随机输入检查PASS。没有修改校验容差。Compute Sanitizer先前因WDDM接口受阻，本轮未重试，不声称通过此项。
+
+{resources}
+实际寄存器和驻留以编译/运行查询为准；并未通过限制寄存器数量来强迫更多驻留。
+
+## 同期普通计时
+
+相同五形状及随机输入序列。20次预热，每进程3轮×100次启动；reg4/reg8/reg8/reg4/reg4/reg8交错，各三进程九轮，取批量平均耗时中位数。CUDA events、重复缓冲、不清L2，不计分配/拷贝/检查。与notes/31不同轮次的数据不直接混合计算cuBLAS差距。
+
+{table}
+所有轮次、进程中位数及抽查误差保留在runs/summary.json；短任务注意启动派发与环境噪声，不泛化为任意输入。
+
+首轮2048原始轮次重叠、部分进程结果漂移，因此增加预先独立记录的长批次复测：只测2048，每轮1000次、三轮，每版三进程，顺序reg8/reg4/reg4/reg8/reg8/reg4；预热仍20，随机序列跳过原五形状前两组，以保持2048输入不变。新版及原版全部抽查PASS。
+
+| 2048长批次 | 原64/4 | 新128/8 |
+|---|---:|---:|
+| 九轮中位数 ms | {sustained['reg4']['median_ms']:.6f} | {sustained['reg8']['median_ms']:.6f} |
+| 三次进程中位数 ms | {' / '.join(map(str,sustained['reg4']['process_medians_ms']))} | {' / '.join(map(str,sustained['reg8']['process_medians_ms']))} |
+
+新版长批次耗时增加{sustained['reg8_time_change_pct']:.2f}%，加速比{sustained['reg8_speedup']:.3f}×；三次进程方向一致，九轮范围不重叠。本轮没有观察到2048收益，首轮与复测分别保留，不将两个不同批次混为一个中位数。
+
+## 2048计数器与指令
+
+Nsight Compute application replay、cache-control none、clock-control none；21次先行调用后采第22次，与普通计时先行调用数一致。正反顺序各一次，完整调用均一个kernel；profile每次调用后同步，与普通批量启动不同，profiler耗时不替代上表。
+
+InstructionStats按opcode数组由工具自带Python报告接口导出。以下为warp执行次数，包含谓词关闭的指令，不是线程数、字节量或耗时比例。
+
+{inst}
+{profile_table}
+两版local/shared spilling请求均由原始报告保存，需结合编译local/stack及SASS解释；资源变大不自动意味着溢出，指令减少也不保证耗时按比例减少。具体结论结合本轮计时与实际数据，不以某个单一利用率作为唯一根因。
+
+本轮两版local/shared spilling请求实际均为0；候选93寄存器实际按96分配，寄存器与shared各自都将理论驻留限制为2block/SM。shared含driver约33.5KiB/block，3个block需100.5KiB，超过该卡100KiB/SM。active warp占用约78%→32%。
+
+2048实际FFMA数量保持268,435,456 warp指令，shared读取33,554,432→16,777,216、global读取2,097,152→1,048,576，均减半；全部指令约436.44m→355.19m，减少约18.6%。预期中的复用确实实现，但shared读bank冲突约6.6—8.2万→3373万。shared写冲突反而约1377万→677万，不能把读写冲突混为一项。
+
+源码/SASS支持的具体线索：B侧仍按tx*THREAD_TILE+j访问，每次LDS.128读取四个相邻float。当THREAD_TILE=8，tx=0..7的第一组起始bank（k行首模32为0）为0/8/16/24/0/8/16/24；对应不同地址，每组四bank重复，形成两路访问冲突；旧步长4的起始bank为0/4/8/12/16/20/24/28，覆盖不重叠。A侧还有warp内广播等行为。该地址推导与读冲突增加相符；尚未通过独立B布局实验隔离其具体耗时贡献，不能断言其独占全部回退。
+
+首轮reg4 profile时钟只有约1.93GHz，第二轮约2.80GHz；reg8两轮约2.87GHz。频率未锁定，不能用profiler时间直接排名或将跨轮指标小差异完全归因。普通长批次复测作为性能判断依据，确定性的指令计数用于结构验证。
+
+小任务还有明确的并行任务减少：512输出64→16block，长方形128×1024输出32→8block，最多可同时覆盖的SM数下降；128输出4→1block。尾部无效计算与资源变化也存在，不将全部小输入回退唯一归因于block数。
+
+## 范围与后续
+
+本轮没有添加双缓冲、异步搬运、新warp映射、额外unroll或更改K_TILE。原gemm_self_float4.cu及默认re均保留。该试验说明直接扩大寄存器块而沿用旧布局未获益，不代表大寄存器块路线无效；后续可由用户决定是否先处理B读取布局，再考虑双缓冲。当前不自动实施下一项。
+
+notes/data/2026-11-10-gemm-register8保存实际源码、bench/check/resource/profile入口、编译及计时命令、全部校验与资源/计数器/SASS、metadata和experiment.py.txt；build/register8_2026-11-10保留忽略的可执行文件和报告。prepare/record要求新目录。
+
+本轮新增独立候选及实验记录，未提交或push。
+'''
+    (REPO/'notes/32-gemm-register8.md').write_text(note)
+    data=REPO/'notes/data/2026-11-10-gemm-register8'
+    data.mkdir(exist_ok=False)
+    for path in ROOT.iterdir():
+        if path.is_file() and path.suffix in ['.txt','.json']:
+            shutil.copyfile(path,data/path.name)
+    for name in NAMES:
+        for path in (ROOT/name).glob('*.cu'):
+            shutil.copyfile(path,data/(name+'_'+path.name+'.txt'))
+    shutil.copyfile(Path(__file__),data/'experiment.py.txt')
+    readme=REPO/'README.md';text=readme.read_text()
+    anchor=next(line for line in text.splitlines() if line.startswith('|') and 'notes/31-gemm-reference-gap.md' in line)
+    text=text.replace(anchor,anchor+'\n| [32 · 扩大到每线程8×8](notes/32-gemm-register8.md) | 保留float4、A转置和单缓冲，比较128输出与原64输出 |',1)
+    readme.write_text(text)
+    large=summary[2]
+    with (REPO/'HANDOFF.md').open('a') as f:
+        f.write(f"\n\n2026-11-10：用户授权先试更大register block。独立gemm_self_float4_reg8.cu仅把输出64→128、每线程4×4→8×8，线程仍256、K32、转置/float4/单缓冲保持。两版12组全输出检查及全部计时抽查PASS；2048首轮reg4={large['reg4']['median_ms']:.6f}ms、reg8={large['reg8']['median_ms']:.6f}ms；补充1000次/轮长批次为{sustained['reg4']['median_ms']:.6f}/{sustained['reg8']['median_ms']:.6f}ms，新版慢{sustained['reg8_time_change_pct']:.2f}%。寄存器39→93、shared16.5→32.5KiB、驻留5→2block/SM，无spill；shared/global读指令减半但shared读bank冲突约几万→3373万，B的tx*8步长与两路冲突吻合，未独立隔离耗时。资源与指令详见notes/32及原始数据，未加双缓冲，原基线保留，未提交。\n")
+    print('Published',published,'and',REPO/'notes/32-gemm-register8.md',flush=True)
+else:
+    raise ValueError(phase)

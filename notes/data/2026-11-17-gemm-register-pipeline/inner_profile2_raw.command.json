@@ -1,0 +1,10 @@
+[
+  "/usr/local/cuda/bin/ncu",
+  "--import",
+  "/home/unn/ai-infra-lab/build/register_pipeline_2026-11-17/inner_profile2.ncu-rep",
+  "--page",
+  "raw",
+  "--csv",
+  "--print-units",
+  "base"
+]

@@ -1,0 +1,41 @@
+// [Codex shared→register双缓冲] 每线程一组输入仍是8A+8B；用四个float4表示。
+// stage、行跨度和local_row/b_shared_col(local_col)都保持16B对齐。
+__device__ __forceinline__ void load_register_inputs(
+    ATilePointer Ats, BTilePointer Bs, int k, int local_row, int bc,
+    float4& a_lo, float4& a_hi, float4& b_lo, float4& b_hi) {
+    a_lo = *reinterpret_cast<const float4*>(&Ats[k][local_row]);
+    a_hi = *reinterpret_cast<const float4*>(&Ats[k][local_row + 4]);
+    b_lo = *reinterpret_cast<const float4*>(&Bs[k][bc]);
+    b_hi = *reinterpret_cast<const float4*>(&Bs[k][bc + 4]);
+}
+
+// 累加器只有原来这一份64个float；此函数只展开当前一组输入的外积。
+__device__ __forceinline__ void accumulate_register_inputs(
+    float (&acc)[THREAD_TILE][THREAD_TILE],
+    const float4 a_lo, const float4 a_hi, const float4 b_lo, const float4 b_hi) {
+    const float a[THREAD_TILE] = {a_lo.x, a_lo.y, a_lo.z, a_lo.w, a_hi.x, a_hi.y, a_hi.z, a_hi.w};
+    const float b[THREAD_TILE] = {b_lo.x, b_lo.y, b_lo.z, b_lo.w, b_hi.x, b_hi.y, b_hi.z, b_hi.w};
+    for (int i = 0; i < THREAD_TILE; ++i) {
+        for (int j = 0; j < THREAD_TILE; ++j) acc[i][j] += a[i] * b[j];
+    }
+}
+
+// ===== REPLACEMENT_INNER_LOOP =====
+        // [Codex 内层双缓冲] 使用固定命名的两组寄存器，避免运行时数组下标造成local暂存。
+        // 当前K_TILE=32；成对处理k/k+1，仍严格按k=0..31的顺序累计。
+        static_assert(THREAD_TILE == 8 && K_TILE % 2 == 0,
+                      "Register ping-pong requires eight-element inputs and an even K_TILE.");
+        const int bc = b_shared_col(local_col);
+        float4 ar0_lo, ar0_hi, br0_lo, br0_hi;
+        float4 ar1_lo, ar1_hi, br1_lo, br1_hi;
+        load_register_inputs(Ats, Bs, 0, local_row, bc, ar0_lo, ar0_hi, br0_lo, br0_hi);
+        for (int k = 0; k < K_TILE; k += 2) {
+            // 先发出下一组读取，再用当前组计算，两组不互相覆盖。
+            load_register_inputs(Ats, Bs, k + 1, local_row, bc, ar1_lo, ar1_hi, br1_lo, br1_hi);
+            accumulate_register_inputs(acc, ar0_lo, ar0_hi, br0_lo, br0_hi);
+            if (k + 2 < K_TILE) {
+                load_register_inputs(Ats, Bs, k + 2, local_row, bc, ar0_lo, ar0_hi, br0_lo, br0_hi);
+            }
+            accumulate_register_inputs(acc, ar1_lo, ar1_hi, br1_lo, br1_hi);
+        }
+

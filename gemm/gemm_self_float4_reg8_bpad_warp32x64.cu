@@ -1,0 +1,310 @@
+// [Codex warp分工候选] 只把每warp输出从16×128改为32×64，两层双缓冲保留。
+// [Codex 内层寄存器流水线候选] 只增加shared→register输入双缓冲；外层shared双缓冲保留。
+// [Codex 双缓冲候选] 基于128/8行内padding：A向量寄存器预取、B异步搬运、两个shared stage。
+#include <cuda_runtime.h>
+#include <cuda_pipeline.h>
+#include <cublas_v2.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
+
+// ===== Codex 补充：把原 TILE 的三种职责分别命名 =====
+constexpr int OUTPUT_TILE = 128;  // 一个 block 负责的输出方块边长。
+constexpr int K_TILE      = 32;  // 每轮沿 K 方向搬入、计算的长度。
+constexpr int THREAD_TILE = 8;   // [Codex 调整] 一个线程负责 8×8 个输出。
+
+// [Codex 调整] 输出块必须能均分给线程；K_TILE 的长度用于独立的加载循环。
+static_assert(OUTPUT_TILE > 0 && K_TILE > 0 && THREAD_TILE > 0, "Tile sizes must be positive.");
+static_assert(OUTPUT_TILE % THREAD_TILE == 0, "Output tile must be divisible by thread tile.");
+// [Codex 编译期分工实验] 与当前启动方式一致，由输出分工推导固定线程形状。
+constexpr int BLOCK_SIDE = OUTPUT_TILE / THREAD_TILE;  // 16
+constexpr int BLOCK_THREADS = BLOCK_SIDE * BLOCK_SIDE; // 256
+// [Codex float4实验] 当前四元素分组要求输入tile两边均为4的倍数。
+static_assert(K_TILE % 4 == 0 && OUTPUT_TILE % 4 == 0, "Vector loading requires tile extents divisible by four.");
+// [Codex 行内padding实验] B的每8个有效float后留4个空位；128有效列占192物理列。
+constexpr int B_GROUP = 8;
+constexpr int B_GROUP_PAD = 4;
+constexpr int B_SHARED_COLS = (OUTPUT_TILE / B_GROUP) * (B_GROUP + B_GROUP_PAD);
+static_assert(OUTPUT_TILE % B_GROUP == 0 && B_GROUP % 4 == 0 && B_GROUP_PAD % 4 == 0,
+              "Grouped B padding must preserve four-float alignment.");
+// 搬入与计算读取共用同一映射，空位永远不读取；c及返回值均以float为单位。
+__device__ __forceinline__ int b_shared_col(int c) {
+    return c + (c / B_GROUP) * B_GROUP_PAD;
+}
+// ===== Codex 补充结束 =====
+
+// ===== Codex 补充：CUDA 错误检查 =====
+// CUDA API 会返回状态码。失败时打印调用位置并退出，避免带着错误继续运行。
+// do/while (0) 让这个多行宏可以像普通的一条语句那样使用。
+#define CUDA_CHECK(expr)                                                        \
+    do {                                                                        \
+        cudaError_t status = (expr);                                             \
+        if (status != cudaSuccess) {                                             \
+            std::fprintf(stderr, "CUDA error: %s (%s:%d)\n",                     \
+                         cudaGetErrorString(status), __FILE__, __LINE__);         \
+            std::exit(EXIT_FAILURE);                                             \
+        }                                                                       \
+    } while (0)
+// ===== Codex 补充结束 =====
+
+// [Codex 双缓冲] 两个stage各保留相同的A转置布局和B行内padding布局。
+constexpr int A_SHARED_COLS = OUTPUT_TILE + 4;
+constexpr int A_STAGE_FLOATS = K_TILE * A_SHARED_COLS;
+constexpr int B_STAGE_FLOATS = K_TILE * B_SHARED_COLS;
+constexpr int STAGE_FLOATS = A_STAGE_FLOATS + B_STAGE_FLOATS;
+constexpr int A_VECTOR_GROUPS = OUTPUT_TILE * K_TILE / (4 * BLOCK_THREADS);
+#define GEMM_DYNAMIC_SHARED_BYTES (2 * STAGE_FLOATS * sizeof(float))
+static_assert(OUTPUT_TILE * K_TILE % (4 * BLOCK_THREADS) == 0,
+              "A prefetch groups must divide evenly across threads.");
+static_assert(THREAD_TILE == 8 && B_GROUP == 8,
+              "This double-buffer candidate reads an eight-element B group as two float4 vectors.");
+using ATilePointer = float (*)[A_SHARED_COLS];
+using BTilePointer = float (*)[B_SHARED_COLS];
+
+// A保持global float4读取。下一轮四组向量暂存在本线程寄存器，计算当前轮后再转置散写。
+// 这样避免为了异步拷贝把A退回四次标量global读取，也不额外增加一份shared转置暂存。
+__device__ __forceinline__ void prefetch_a(float4* values, const float* A,
+                                         int M, int K, int block_row, int k0, int tid) {
+    for (int n = 0; n < A_VECTOR_GROUPS; ++n) {
+        const int group = tid + n * BLOCK_THREADS;
+        const int index = group * 4;
+        const int r = index / K_TILE, k = index % K_TILE;
+        const int gr = block_row + r, gk = k0 + k;
+        float4 v = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+        if (gr < M) {
+            if (K % 4 == 0 && gk + 3 < K) {
+                v = *reinterpret_cast<const float4*>(A + size_t(gr) * K + gk);
+            } else {
+                v.x = gk + 0 < K ? A[size_t(gr) * K + gk + 0] : 0.0f;
+                v.y = gk + 1 < K ? A[size_t(gr) * K + gk + 1] : 0.0f;
+                v.z = gk + 2 < K ? A[size_t(gr) * K + gk + 2] : 0.0f;
+                v.w = gk + 3 < K ? A[size_t(gr) * K + gk + 3] : 0.0f;
+            }
+        }
+        values[n] = v;
+    }
+}
+
+__device__ __forceinline__ void publish_a(ATilePointer Ats, const float4* values, int tid) {
+    for (int n = 0; n < A_VECTOR_GROUPS; ++n) {
+        const int index = (tid + n * BLOCK_THREADS) * 4;
+        const int r = index / K_TILE, k = index % K_TILE;
+        const float4 v = values[n];
+        Ats[k + 0][r] = v.x;
+        Ats[k + 1][r] = v.y;
+        Ats[k + 2][r] = v.z;
+        Ats[k + 3][r] = v.w;
+    }
+}
+
+// B可直接把四个连续global float异步搬到padding映射后的连续shared位置。
+// 越界或行跨度不对齐时，沿用安全标量读取/补零，再做普通shared宽写。
+__device__ __forceinline__ void prefetch_b(BTilePointer Bs, const float* B,
+                                         int N, int K, int block_col, int k0, int tid) {
+    for (int group = tid; group < K_TILE * OUTPUT_TILE / 4; group += BLOCK_THREADS) {
+        const int index = group * 4;
+        const int k = index / OUTPUT_TILE, c = index % OUTPUT_TILE;
+        const int gk = k0 + k, gc = block_col + c;
+        float* dst = &Bs[k][b_shared_col(c)];
+        if (gk < K && N % 4 == 0 && gc + 3 < N) {
+            __pipeline_memcpy_async(dst, B + size_t(gk) * N + gc, sizeof(float4));
+        } else {
+            float4 v = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+            if (gk < K) {
+                v.x = gc + 0 < N ? B[size_t(gk) * N + gc + 0] : 0.0f;
+                v.y = gc + 1 < N ? B[size_t(gk) * N + gc + 1] : 0.0f;
+                v.z = gc + 2 < N ? B[size_t(gk) * N + gc + 2] : 0.0f;
+                v.w = gc + 3 < N ? B[size_t(gk) * N + gc + 3] : 0.0f;
+            }
+            *reinterpret_cast<float4*>(dst) = v;
+        }
+    }
+    __syncwarp();  // 边缘分支汇合后，每个线程提交自己的异步拷贝批次。
+    __pipeline_commit();
+}
+
+// [Codex shared→register双缓冲] 每线程一组输入仍是8A+8B；用四个float4表示。
+// stage、行跨度和local_row/b_shared_col(local_col)都保持16B对齐。
+__device__ __forceinline__ void load_register_inputs(
+    ATilePointer Ats, BTilePointer Bs, int k, int local_row, int bc,
+    float4& a_lo, float4& a_hi, float4& b_lo, float4& b_hi) {
+    a_lo = *reinterpret_cast<const float4*>(&Ats[k][local_row]);
+    a_hi = *reinterpret_cast<const float4*>(&Ats[k][local_row + 4]);
+    b_lo = *reinterpret_cast<const float4*>(&Bs[k][bc]);
+    b_hi = *reinterpret_cast<const float4*>(&Bs[k][bc + 4]);
+}
+
+// 累加器只有原来这一份64个float；此函数只展开当前一组输入的外积。
+__device__ __forceinline__ void accumulate_register_inputs(
+    float (&acc)[THREAD_TILE][THREAD_TILE],
+    const float4 a_lo, const float4 a_hi, const float4 b_lo, const float4 b_hi) {
+    const float a[THREAD_TILE] = {a_lo.x, a_lo.y, a_lo.z, a_lo.w, a_hi.x, a_hi.y, a_hi.z, a_hi.w};
+    const float b[THREAD_TILE] = {b_lo.x, b_lo.y, b_lo.z, b_lo.w, b_hi.x, b_hi.y, b_hi.z, b_hi.w};
+    for (int i = 0; i < THREAD_TILE; ++i) {
+        for (int j = 0; j < THREAD_TILE; ++j) acc[i][j] += a[i] * b[j];
+    }
+}
+
+
+// [Codex 实现] 128输出/每线程8×8；A寄存器预取，B硬件异步拷贝，shared双缓冲。
+__global__ void gemm_tiled(const float* __restrict__ A, const float* __restrict__ B,
+                           float* __restrict__ C, int M, int N, int K) {
+    // 两个stage共82,944B=81KiB；超过48KiB，host需显式opt-in并传启动动态shared大小。
+    extern __shared__ __align__(16) float storage[];
+    const int tx = threadIdx.x, ty = threadIdx.y;
+    const int tid = ty * BLOCK_SIDE + tx;
+    const int block_row = blockIdx.y * OUTPUT_TILE;
+    const int block_col = blockIdx.x * OUTPUT_TILE;
+    // [Codex warp分工实验] 启动仍为16×16线程，global→shared搬运继续使用原tid。
+    // 只改输出归属：8个warp排成4行×2列，每warp负责32×64输出。
+    // warp内32线程排成4行×8列，每线程仍计算连续8×8。
+    static_assert(OUTPUT_TILE == 128 && THREAD_TILE == 8 && BLOCK_THREADS == 256,
+                  "This warp mapping requires a 128 tile and 256 eight-by-eight threads.");
+    const int warp_id = tid / 32;
+    const int lane_id = tid % 32;
+    const int local_row = (warp_id / 2) * 32 + (lane_id / 8) * THREAD_TILE;
+    const int local_col = (warp_id % 2) * 64 + (lane_id % 8) * THREAD_TILE;
+    const int row = block_row + local_row, col = block_col + local_col;
+    float acc[THREAD_TILE][THREAD_TILE] = {};
+    float4 next_a[A_VECTOR_GROUPS];  // 每线程四组float4，跨当前计算保留下一轮A。
+
+    // 预装stage0；第一次计算之前，两份输入都必须就绪。
+    prefetch_a(next_a, A, M, K, block_row, 0, tid);
+    publish_a(reinterpret_cast<ATilePointer>(storage), next_a, tid);
+    prefetch_b(reinterpret_cast<BTilePointer>(storage + A_STAGE_FLOATS), B,
+               N, K, block_col, 0, tid);
+    __pipeline_wait_prior(0);
+    __syncthreads();
+
+    int stage = 0;
+    for (int k0 = 0; k0 < K; k0 += K_TILE) {
+        ATilePointer Ats = reinterpret_cast<ATilePointer>(storage + stage * STAGE_FLOATS);
+        BTilePointer Bs = reinterpret_cast<BTilePointer>(storage + stage * STAGE_FLOATS + A_STAGE_FLOATS);
+        const int next_stage = stage ^ 1;
+        const bool has_next = k0 + K_TILE < K;
+        if (has_next) {
+            // 当前只读stage，下一轮只写另一stage；A的预取结果到计算后才使用。
+            prefetch_a(next_a, A, M, K, block_row, k0 + K_TILE, tid);
+            prefetch_b(reinterpret_cast<BTilePointer>(storage + next_stage * STAGE_FLOATS + A_STAGE_FLOATS),
+                       B, N, K, block_col, k0 + K_TILE, tid);
+        }
+
+        // [Codex 内层双缓冲] 使用固定命名的两组寄存器，避免运行时数组下标造成local暂存。
+        // 当前K_TILE=32；成对处理k/k+1，仍严格按k=0..31的顺序累计。
+        static_assert(THREAD_TILE == 8 && K_TILE % 2 == 0,
+                      "Register ping-pong requires eight-element inputs and an even K_TILE.");
+        const int bc = b_shared_col(local_col);
+        float4 ar0_lo, ar0_hi, br0_lo, br0_hi;
+        float4 ar1_lo, ar1_hi, br1_lo, br1_hi;
+        load_register_inputs(Ats, Bs, 0, local_row, bc, ar0_lo, ar0_hi, br0_lo, br0_hi);
+        for (int k = 0; k < K_TILE; k += 2) {
+            // 先发出下一组读取，再用当前组计算，两组不互相覆盖。
+            load_register_inputs(Ats, Bs, k + 1, local_row, bc, ar1_lo, ar1_hi, br1_lo, br1_hi);
+            accumulate_register_inputs(acc, ar0_lo, ar0_hi, br0_lo, br0_hi);
+            if (k + 2 < K_TILE) {
+                load_register_inputs(Ats, Bs, k + 2, local_row, bc, ar0_lo, ar0_hi, br0_lo, br0_hi);
+            }
+            accumulate_register_inputs(acc, ar1_lo, ar1_hi, br1_lo, br1_hi);
+        }
+
+        if (has_next) {
+            __pipeline_wait_prior(0);  // 等本线程提交的下一轮B拷贝。
+            publish_a(reinterpret_cast<ATilePointer>(storage + next_stage * STAGE_FLOATS), next_a, tid);
+        }
+        // 同时保证：所有线程用完旧stage，且下一stage的A写入/B拷贝全部到齐。
+        // 下一轮才可覆盖旧stage。相比单缓冲的两处barrier，轮间在此合并同步。
+        __syncthreads();
+        stage = next_stage;
+    }
+
+    for (int i = 0; i < THREAD_TILE; ++i) {
+        for (int j = 0; j < THREAD_TILE; ++j) {
+            if (row + i < M && col + j < N) C[size_t(row + i) * N + col + j] = acc[i][j];
+        }
+    }
+}
+
+
+// [Codex 说明] 下列 run_gemm 的流程由你起草；我整理了格式、给已有 API
+// 加上 CUDA_CHECK，并在标记处补齐执行检查、结果拷回和释放显存。
+// 调用前：hA、hB 已填好，hC 有 M*N 个 float 的空间；M、N、K 为正数。
+void run_gemm(const float* hA, const float* hB, float* hC, int M, int N, int K) {
+    float *dA = nullptr, *dB = nullptr, *dC = nullptr;
+    const size_t bytesA = size_t(M) * K * sizeof(float);
+    const size_t bytesB = size_t(K) * N * sizeof(float);
+    const size_t bytesC = size_t(M) * N * sizeof(float);
+
+    CUDA_CHECK(cudaMalloc(&dA, bytesA));
+    CUDA_CHECK(cudaMalloc(&dB, bytesB));
+    CUDA_CHECK(cudaMalloc(&dC, bytesC));
+
+    CUDA_CHECK(cudaMemcpy(dA, hA, bytesA, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(dB, hB, bytesB, cudaMemcpyHostToDevice));
+
+    // [Codex 调整] 128×128 输出 / 每线程 8×8 输出 = 16×16 个线程。
+    dim3 block(BLOCK_SIDE, BLOCK_SIDE); // [Codex] 与编译期搬运分工保持一致。
+    // [Codex 调整] grid 按每个 block 覆盖的输出范围计算。
+    dim3 grid((N + OUTPUT_TILE - 1) / OUTPUT_TILE,
+              (M + OUTPUT_TILE - 1) / OUTPUT_TILE);
+
+
+    // [Codex 测量适配] 仅启动前申请动态shared，设置本身不进入计时区间。
+    if (GEMM_DYNAMIC_SHARED_BYTES > 0)
+        CUDA_CHECK(cudaFuncSetAttribute(gemm_tiled, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                       int(GEMM_DYNAMIC_SHARED_BYTES)));
+    gemm_tiled<<<grid, block, GEMM_DYNAMIC_SHARED_BYTES>>>(dA, dB, dC, M, N, K);
+
+    // ===== Codex 补充：完成一次调用 =====
+    // 检查启动错误（例如不合法的启动配置），再等待 GPU 完成，检查执行错误。
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    // kernel 把输出写进 dC；这里把结果复制到调用者准备的 CPU 数组 hC。
+    CUDA_CHECK(cudaMemcpy(hC, dC, bytesC, cudaMemcpyDeviceToHost));
+
+    // 结果已经取回，释放本次调用申请的三块显存。hA/hB/hC 由调用者管理。
+    CUDA_CHECK(cudaFree(dA));
+    CUDA_CHECK(cudaFree(dB));
+    CUDA_CHECK(cudaFree(dC));
+    // ===== Codex 补充结束 =====
+}
+
+// ===== Codex 补充：最小测试入口 =====
+// 只验证一次矩阵乘法；先不加入随机填值、计时或 cuBLAS 对照。
+// [Codex 补充] 测量入口引用本文件时省略这个 main；单独编译仍运行小例子。
+#ifndef GEMM_SELF_BENCH
+int main() {
+    const int M = 2, N = 2, K = 3;
+
+    // CPU 输入按行连续存放：A 为 2*3，B 为 3*2。
+    const float hA[M * K] = {1, 2, 3,
+                            4, 5, 6};
+    const float hB[K * N] = {7,  8,
+                            9, 10,
+                           11, 12};
+    float hC[M * N] = {};  // 给拷回的结果预留 CPU 空间。
+
+    // 手算参考值：例如 C[0][0] = 1*7 + 2*9 + 3*11 = 58。
+    const float expected[M * N] = {58,  64,
+                                 139, 154};
+
+    // 这是 CPU 上的普通函数调用；真正的 GPU 启动语句在 run_gemm 内部。
+    run_gemm(hA, hB, hC, M, N, K);
+
+    bool passed = true;
+    for (int row = 0; row < M; ++row) {
+        for (int col = 0; col < N; ++col) {
+            const int i = row * N + col;
+            // 浮点结果通常按容差比较；非有限数也必须判为失败。
+            const bool ok = std::isfinite(hC[i]) &&
+                            std::fabs(hC[i] - expected[i]) < 1e-5f;
+            std::printf("C[%d][%d] = %.1f, expected %.1f: %s\n",
+                        row, col, hC[i], expected[i], ok ? "OK" : "FAIL");
+            passed = passed && ok;
+        }
+    }
+    std::printf("GEMM correctness: %s\n", passed ? "PASS" : "FAIL");
+    return passed ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+#endif
+// ===== Codex 补充结束 =====

@@ -1,5 +1,7 @@
 # ai-infra-lab
 
+> **2026-11-10 对照：** 最新float4与严格FP32 cuBLAS同期2048耗时1.245/0.786ms，库快1.58倍；指令与资源差异见[同精度差距分析](notes/31-gemm-reference-gap.md)。暂不进入Tensor Core。
+
 > **2026-11-09 收尾：** 已完成A局部转置、严格FP32参照、编译期线程分工及float4四组实验；最新候选、验证边界和下次亲手编码入口见 [当日收尾](notes/30-gemm-day-end.md)。
 
 > **2026-11-07 收尾：** 双缓冲、驻留、1024线程与padding实验已整理；当前版本、验证边界及续学入口见 [当日收尾](notes/22-gemm-day-end.md)。
@@ -119,6 +121,12 @@ nvcc -O3 -arch=sm_120 gemm/gemm_self_bench.cu -o build/gemm_self_bench && ./buil
 | [28 · 编译期线程分工](notes/28-gemm-const-block.md) | 动态指令减少约7.85%，该轮2048普通计时未加速 |
 | [29 · float4四组对照](notes/29-gemm-float4-factorial.md) | 有无A转置分别加入float4；2048增量约1.13倍，转置+float4本轮最快 |
 | [30 · 本日收尾](notes/30-gemm-day-end.md) | 最新候选、实验索引、验证范围与用户亲手编码的续学入口 |
+| [31 · 最新版与cuBLAS的同精度差距](notes/31-gemm-reference-gap.md) | 同期约1.58倍；辅助指令、寄存器投入与异步搬运的结构对照 |
+| [32 · 扩大到每线程8×8](notes/32-gemm-register8.md) | 保留float4、A转置和单缓冲，比较128输出与原64输出 |
+| [33 · B行内分组padding](notes/33-gemm-register8-group-padding.md) | 每8数后留4空位；读冲突下降约99.5%，净收益见同期计时 |
+| [34 · padding版双缓冲](notes/34-gemm-padded-double-buffer.md) | A预取+B异步，81KiB shared；2048比同结构单缓冲约快1.08倍 |
+| [35 · shared到寄存器双缓冲](notes/35-gemm-register-pipeline.md) | 保留外层流水线；2048配对加速约1.11倍，128寄存器且无溢出 |
+| [36 · warp输出分工](notes/36-gemm-warp-layout.md) | 每warp 16×128→32×64；2048配对约1.004倍，未证实稳定收益 |
 
 **编译产物统一输出到 `build/`**，源码目录保持干净。`build/` 已在 `.gitignore` 里，不用每次想“这个要不要提交”。
 

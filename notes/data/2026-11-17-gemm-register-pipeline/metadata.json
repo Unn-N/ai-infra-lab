@@ -1,0 +1,53 @@
+{
+  "reg4": {
+    "source_sha256": "4ee9339437cf7c087a23a7935e0f199aa0deb7092a22b750be72ac6a4a280801",
+    "resource": {
+      "output": 64,
+      "thread_tile": 4,
+      "threads": 256,
+      "regs": 39,
+      "static_shared": 16896,
+      "dynamic_shared": 0,
+      "total_shared": 16896,
+      "local": 0,
+      "blocks_per_SM": 5,
+      "max_dynamic_shared": 32256,
+      "kernel_max_threads": 1024,
+      "SMs": 48
+    }
+  },
+  "outer": {
+    "source_sha256": "6c5f098bac21fd40eeb8beb3afe0a8ee7367e425c011c9d02c629849b0077f46",
+    "resource": {
+      "output": 128,
+      "thread_tile": 8,
+      "threads": 256,
+      "regs": 126,
+      "static_shared": 0,
+      "dynamic_shared": 82944,
+      "total_shared": 82944,
+      "local": 0,
+      "blocks_per_SM": 1,
+      "max_dynamic_shared": 82944,
+      "kernel_max_threads": 512,
+      "SMs": 48
+    }
+  },
+  "inner": {
+    "source_sha256": "570d2bb49cd98d7ac61217dcf44792da29b85acf182d654b0f3cc02fbffe4898",
+    "resource": {
+      "output": 128,
+      "thread_tile": 8,
+      "threads": 256,
+      "regs": 128,
+      "static_shared": 0,
+      "dynamic_shared": 82944,
+      "total_shared": 82944,
+      "local": 0,
+      "blocks_per_SM": 1,
+      "max_dynamic_shared": 82944,
+      "kernel_max_threads": 512,
+      "SMs": 48
+    }
+  }
+}

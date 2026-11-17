@@ -1,0 +1,10 @@
+[
+  "/usr/local/cuda/bin/nvcc",
+  "-O3",
+  "-lineinfo",
+  "-arch=sm_120",
+  "-Xptxas=-v",
+  "/home/unn/ai-infra-lab/build/warp_layout_2026-11-17/warp/resource.cu",
+  "-o",
+  "/home/unn/ai-infra-lab/build/warp_layout_2026-11-17/warp/resource"
+]

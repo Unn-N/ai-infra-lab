@@ -1,0 +1,20 @@
+[
+  "/usr/local/cuda/bin/ncu",
+  "--profile-from-start",
+  "off",
+  "--replay-mode",
+  "application",
+  "--cache-control",
+  "none",
+  "--clock-control",
+  "none",
+  "--section",
+  "InstructionStats",
+  "--export",
+  "/home/unn/ai-infra-lab/build/reference_gap_2026-11-10/cublas_instructions",
+  "--force-overwrite",
+  "/home/unn/ai-infra-lab/build/reference_gap_2026-11-10/cublas_profile",
+  "2048",
+  "2048",
+  "2048"
+]

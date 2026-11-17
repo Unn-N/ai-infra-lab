@@ -1,0 +1,282 @@
+from pathlib import Path
+import subprocess, json, csv, io, shutil, statistics, sys, hashlib
+
+REPO=Path('/home/unn/ai-infra-lab')
+ROOT=REPO/'build/group_padding_2026-11-10'
+PREV=REPO/'build/register8_2026-11-10'
+NVCC='/usr/local/cuda/bin/nvcc'
+NCU='/usr/local/cuda/bin/ncu'
+NAMES=['reg4','reg8','reg8pad']
+METRICS=['gpu__time_duration.sum','smsp__inst_executed.sum',
+         'smsp__sass_inst_executed_op_shared_ld.sum','smsp__sass_inst_executed_op_shared_st.sum',
+         'smsp__sass_inst_executed_op_global_ld.sum',
+         'l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum',
+         'l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum',
+         'sm__warps_active.avg.pct_of_peak_sustained_active',
+         'smsp__issue_active.avg.pct_of_peak_sustained_active',
+         'sm__inst_executed_pipe_fma.avg.pct_of_peak_sustained_elapsed',
+         'sm__cycles_elapsed.avg.per_second']
+
+def run(cmd,tag):
+    (ROOT/(tag+'.command.json')).write_text(json.dumps(cmd,indent=2))
+    p=subprocess.run(cmd,capture_output=True,text=True)
+    (ROOT/(tag+'.txt')).write_text(p.stdout+p.stderr)
+    if p.returncode:
+        print((p.stdout+p.stderr)[-8000:],flush=True)
+        raise RuntimeError((tag,p.returncode))
+    return p.stdout
+
+def save(name,value):
+    (ROOT/name).write_text(json.dumps(value,indent=2))
+
+def timing_rows(output):
+    rows=[]
+    for line in output.splitlines():
+        p=line.split()
+        if len(p)==9 and all(x.isdigit() for x in p[:3]):
+            rows.append({'shape':list(map(int,p[:3])),'rounds_ms':list(map(float,p[3:6])),
+                         'median_ms':float(p[6]),'sampled_maxerr':float(p[8])})
+    assert 'All sampled checks PASS' in output
+    return rows
+
+def summarize(runs,count):
+    result=[]
+    for index in range(count):
+        row={'shape':runs[0]['rows'][index]['shape']}
+        for name in NAMES:
+            selected=[r['rows'][index] for r in runs if r['variant']==name]
+            row[name]={'median_ms':statistics.median([v for r in selected for v in r['rounds_ms']]),
+                       'all_rounds_ms':[v for r in selected for v in r['rounds_ms']],
+                       'process_medians_ms':[r['median_ms'] for r in selected]}
+        row['padding_speedup_vs_reg8']=row['reg8']['median_ms']/row['reg8pad']['median_ms']
+        row['padding_speedup_vs_reg4']=row['reg4']['median_ms']/row['reg8pad']['median_ms']
+        result.append(row)
+    return result
+
+phase=sys.argv[1]
+if phase=='prepare':
+    ROOT.mkdir(exist_ok=False)
+    base=(REPO/'gemm/gemm_self_float4_reg8.cu').read_text()
+    candidate=base
+    anchor='// ===== Codex 补充结束 ====='
+    helper='''// [Codex 行内padding实验] B的每8个有效float后留4个空位；128有效列占192物理列。
+constexpr int B_GROUP = 8;
+constexpr int B_GROUP_PAD = 4;
+constexpr int B_SHARED_COLS = (OUTPUT_TILE / B_GROUP) * (B_GROUP + B_GROUP_PAD);
+static_assert(OUTPUT_TILE % B_GROUP == 0 && B_GROUP % 4 == 0 && B_GROUP_PAD % 4 == 0,
+              "Grouped B padding must preserve four-float alignment.");
+// 搬入与计算读取共用同一映射，空位永远不读取；c及返回值均以float为单位。
+__device__ __forceinline__ int b_shared_col(int c) {
+    return c + (c / B_GROUP) * B_GROUP_PAD;
+}
+'''
+    candidate=candidate.replace(anchor,helper+anchor,1)
+    assert candidate.count('float Bs[K_TILE][OUTPUT_TILE];')==1
+    candidate=candidate.replace('float Bs[K_TILE][OUTPUT_TILE];','float Bs[K_TILE][B_SHARED_COLS];')
+    candidate=candidate.replace('// Bs每行128个float、c为4的倍数，shared目标始终可安全宽写。',
+                                '// [Codex 行内padding] 物理行宽192；映射后起点仍为4的倍数，保留16B宽写。')
+    assert candidate.count('&Bs[k][c]')==1
+    candidate=candidate.replace('&Bs[k][c]','&Bs[k][b_shared_col(c)]')
+    assert candidate.count('b[j] = Bs[k][local_col + j];')==1
+    candidate=candidate.replace('b[j] = Bs[k][local_col + j];',
+                                'b[j] = Bs[k][b_shared_col(local_col + j)];')
+    candidate=candidate.replace('当前k所需八个A在shared中连续；B维持原布局。',
+                                '当前k所需八个A在shared中连续；B读取使用行内padding映射。')
+    candidate='// [Codex 行内padding候选] 仅改变B的shared布局和配套索引；8×8输出分工、A布局及单缓冲保留。\n'+candidate
+    sources={'reg4':(REPO/'gemm/gemm_self_float4.cu').read_text(),'reg8':base,'reg8pad':candidate}
+    metadata={}
+    for name in NAMES:
+        folder=ROOT/name;folder.mkdir()
+        (folder/'gemm_self_re.cu').write_text(sources[name])
+        for target in ['bench','check','resource','profile','sustained']:
+            shutil.copyfile(PREV/'reg8'/(target+'.cu'),folder/(target+'.cu'))
+            run([NVCC,'-O3','-lineinfo','-arch=sm_120','-Xptxas=-v',str(folder/(target+'.cu')),
+                 '-o',str(folder/target)],name+'_compile_'+target)
+        check=run([str(folder/'check')],name+'_check')
+        assert check.count('PASS M=')==12
+        resource=json.loads(run([str(folder/'resource')],name+'_resource'))
+        metadata[name]={'source_sha256':hashlib.sha256(sources[name].encode()).hexdigest(),'resource':resource}
+        print(name,'12 full-output checks PASS',resource,flush=True)
+    save('metadata.json',metadata)
+elif phase in ['measure','sustained']:
+    long=phase=='sustained'
+    binary='sustained' if long else 'bench'
+    runs=[];counts=dict.fromkeys(NAMES,0)
+    orders=[NAMES,list(reversed(NAMES)),['reg8','reg4','reg8pad']]
+    for order in orders:
+        for name in order:
+            counts[name]+=1
+            output=run([str(ROOT/name/binary)],name+'_'+phase+str(counts[name]))
+            rows=timing_rows(output)
+            assert len(rows)==(1 if long else 5)
+            runs.append({'variant':name,'repeat':counts[name],'rows':rows})
+            print(phase,name,counts[name],[r['median_ms'] for r in rows],flush=True)
+    save(phase+'_runs.json',runs)
+    summary=summarize(runs,1 if long else 5)
+    save(phase+'_summary.json',summary)
+    print(json.dumps(summary,indent=2),flush=True)
+elif phase=='profile':
+    results=[]
+    # Primary controlled comparison: existing reg8 and its grouped-padding variant.
+    names=['reg8','reg8pad']
+    for repeat,order in enumerate([names,list(reversed(names))],1):
+        for name in order:
+            tag=name+'_profile'+str(repeat)
+            run([NCU,'--profile-from-start','off','--replay-mode','application','--cache-control','none',
+                 '--clock-control','none','--section','LaunchStats','--section','InstructionStats',
+                 '--metrics',','.join(METRICS),'--export',str(ROOT/tag),'--force-overwrite',
+                 str(ROOT/name/'profile'),'2048','2048','2048'],tag+'_capture')
+            output=run([NCU,'--import',str(ROOT/(tag+'.ncu-rep')),'--page','raw','--csv',
+                        '--print-units','base'],tag+'_raw')
+            rows=[r for r in csv.DictReader(io.StringIO(output)) if r.get('ID','').isdigit()]
+            assert len(rows)==1
+            entry={'variant':name,'repeat':repeat}
+            for key,value in rows[0].items():
+                if key in METRICS or key.startswith('launch__') or 'spilling' in key:
+                    try:entry[key]=float(value.replace(',',''))
+                    except (ValueError,AttributeError):entry[key]=value
+            for key in METRICS:assert isinstance(entry.get(key),(float,int)),(key,entry.get(key))
+            results.append(entry);save('profile_summary.json',results)
+            print(name,repeat,{k:entry[k] for k in METRICS},flush=True)
+    sys.path.insert(0,'/opt/nvidia/nsight-compute/2026.2.1/extras/python')
+    import ncu_report
+    arrays={}
+    for name in names:
+        context=ncu_report.load_report(str(ROOT/(name+'_profile1.ncu-rep')))
+        action=context.range_by_idx(0).action_by_idx(0)
+        arrays[name]={}
+        for key in ['sass__inst_executed_per_opcode','sass__inst_executed_per_opcode_category',
+                    'sass__thread_inst_executed_true_per_opcode']:
+            metric=action.metric_by_name(key);ids=metric.correlation_ids()
+            arrays[name][key]={str(ids.value(i) if ids else i):metric.value(i) for i in range(metric.num_instances())}
+        run([NCU,'--import',str(ROOT/(name+'_profile1.ncu-rep')),'--page','source','--print-source','sass'],name+'_sass')
+    save('opcode_arrays.json',arrays)
+    print('Saved opcode arrays and SASS',flush=True)
+elif phase=='record':
+    metadata=json.loads((ROOT/'metadata.json').read_text())
+    timing=json.loads((ROOT/'measure_summary.json').read_text())
+    sustained=json.loads((ROOT/'sustained_summary.json').read_text())[0]
+    profiles=json.loads((ROOT/'profile_summary.json').read_text())
+    arrays=json.loads((ROOT/'opcode_arrays.json').read_text())
+    assert len(profiles)==4
+    assert (ROOT/'reg8/gemm_self_re.cu').read_bytes()==(REPO/'gemm/gemm_self_float4_reg8.cu').read_bytes()
+    assert (ROOT/'reg4/gemm_self_re.cu').read_bytes()==(REPO/'gemm/gemm_self_float4.cu').read_bytes()
+    assert all(p['sass__inst_executed_register_spilling_mem_local']==0 and
+               p['sass__inst_executed_register_spilling_mem_shared']==0 for p in profiles)
+    published=REPO/'gemm/gemm_self_float4_reg8_bpad.cu'
+    assert not published.exists()
+    shutil.copyfile(ROOT/'reg8pad/gemm_self_re.cu',published)
+    table='| M,N,K | 64/4 ms | 128/8 ms | 128/8+行内padding ms | padding相对128/8加速比 |\n|---|---:|---:|---:|---:|\n'
+    for row in timing:
+        table+='| '+', '.join(map(str,row['shape']))+' | '+' | '.join(f"{row[n]['median_ms']:.6f}" for n in NAMES)+f" | {row['padding_speedup_vs_reg8']:.3f}× |\n"
+    resource_table='| 资源 | 128/8 | 128/8+行内padding |\n|---|---:|---:|\n'
+    for label,key in [('寄存器/线程','regs'),('static shared/block B','static_shared'),('local/线程 B','local'),('理论block/SM','blocks_per_SM')]:
+        resource_table+='| '+label+' | '+' | '.join(str(metadata[n]['resource'][key]) for n in ['reg8','reg8pad'])+' |\n'
+    profile_table='| 2048指标 | 未padding两轮 | 行内padding两轮 |\n|---|---:|---:|\n'
+    for label,key in [('全部warp指令','smsp__inst_executed.sum'),('shared读指令','smsp__sass_inst_executed_op_shared_ld.sum'),
+                      ('shared写指令','smsp__sass_inst_executed_op_shared_st.sum'),('global读指令','smsp__sass_inst_executed_op_global_ld.sum'),
+                      ('shared读bank冲突','l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum'),
+                      ('shared写bank冲突','l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum'),
+                      ('active warp占用 %','sm__warps_active.avg.pct_of_peak_sustained_active'),
+                      ('active周期发射 %','smsp__issue_active.avg.pct_of_peak_sustained_active'),
+                      ('FMA elapsed吞吐 %','sm__inst_executed_pipe_fma.avg.pct_of_peak_sustained_elapsed'),
+                      ('SM时钟Hz','sm__cycles_elapsed.avg.per_second')]:
+        spans=[]
+        for n in ['reg8','reg8pad']:
+            v=[p[key] for p in profiles if p['variant']==n]
+            spans.append(f'{min(v):,.2f}—{max(v):,.2f}')
+        profile_table+='| '+label+' | '+' | '.join(spans)+' |\n'
+    inst='| InstructionStats warp执行次数 | 未padding | 行内padding |\n|---|---:|---:|\n'
+    for label,key in [('FFMA','FFMA'),('LDS','LDS'),('STS','STS'),('LDG','LDG'),('LEA','LEA'),('IMAD','IMAD')]:
+        v=[arrays[n]['sass__inst_executed_per_opcode'].get(key,0) for n in ['reg8','reg8pad']]
+        inst+=f'| {label} | {v[0]:,.0f} | {v[1]:,.0f} |\n'
+    before=statistics.mean(p['l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum'] for p in profiles if p['variant']=='reg8')
+    after=statistics.mean(p['l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum'] for p in profiles if p['variant']=='reg8pad')
+    note=f'''# 33 · 8×8寄存器分块：B行内分组padding
+
+2026-11-10。用户理解128/8版本B读取冲突后提出用padding错开。已说明行尾padding只改变同一行全部线程的公共偏移，不能改变tx*8的相对间隔；本轮按授权实施“每8个有效float后插4空位”，只改B的shared布局。
+
+## 实际改动
+
+新增独立gemm/gemm_self_float4_reg8_bpad.cu，基于gemm_self_float4_reg8.cu。保持OUTPUT_TILE128、K_TILE32、THREAD_TILE8、16×16线程、A转置及+4 padding、float4 global读取、B的shared宽写、单缓冲、累加/写回/同步位置及标量回退。
+
+仅增加B_GROUP=8、B_GROUP_PAD=4、B_SHARED_COLS=192，以及统一映射b_shared_col(c)=c+(c/8)*4。Bs[32][128]→Bs[32][192]；写入Bs[k][b_shared_col(c)]，计算读取Bs[k][b_shared_col(local_col+j)]。空位从不读取，不增加global有效数据量。
+
+逻辑0..7映射物理0..7，8..15→12..19，依此类推；最后120..127→180..187，188..191为空位。每4元素组不跨8元素逻辑分界，映射后起点仍为4倍数；物理行192float=768B也保持16B对齐，继续使用float4 shared写入。
+
+对第一条四元素B读取，tx0..7起始bank从0/8/16/24/0/8/16/24变成0/12/24/4/16/28/8/20，各线程各占连续4bank；第二条读取整体+4bank，仍不重叠。下方实际计数验证这种映射确实大幅减少读冲突。
+
+候选SHA256={metadata['reg8pad']['source_sha256']}。两个对照源均保留，record时再次核对与实际学习源码一致。
+
+## 正确性与资源
+
+三个版本均-O3 -lineinfo -arch=sm_120、ptxas -v重新编译；与notes/32相同十二组全输出CPU double检查全部PASS，含小尺寸/非方阵/跨128边界/向量及标量回退。所有普通计时及长批次计时前64点随机输入检查PASS，容差不变。没有重试先前WDDM阻挡的Compute Sanitizer，不声称通过此项。
+
+{resource_table}
+kernel shared32.5→40.5KiB，多8KiB；含driver约33.5→41.5KiB。两版寄存器/理论驻留相同，local/shared spilling请求均为0，不通过限制寄存器来改变驻留。
+
+## 同期五形状计时
+
+三个版本共同bench/check入口、相同固定随机序列；20预热，3轮×100启动，每版3进程九轮。顺序reg4/reg8/reg8pad、reg8pad/reg8/reg4、reg8/reg4/reg8pad。CUDA event批量平均，同缓冲、不清L2，不含分配/传输/检查。三版各行取九轮中位数。
+
+{table}
+首轮2048的padding耗时相对未padding约+1.35%，轮次范围重叠；512及长方形汇总略快，幅度小且原始轮次重叠，不能据此外推普遍净收益。128等短任务有明显进程漂移，不作稳定排名。
+
+## 2048长批次复测
+
+使用notes/32同一长批次入口，20预热、3轮×1000次启动，每版3进程九轮；只测2048，并跳过原五形状前两组随机数以保持该输入数据一致。顺序与上方三组相同。
+
+| 版本 | 九轮中位数 ms | 三个进程中位数 ms |
+|---|---:|---|
+'''
+    for name in NAMES:
+        note+=f"| {name} | {sustained[name]['median_ms']:.6f} | "+' / '.join(map(str,sustained[name]['process_medians_ms']))+' |\n'
+    note+=f'''
+padding相对未padding加速比{sustained['padding_speedup_vs_reg8']:.4f}×，耗时变化{100*(sustained['reg8pad']['median_ms']/sustained['reg8']['median_ms']-1):+.2f}%；相对64/4加速比{sustained['padding_speedup_vs_reg4']:.4f}×。短批次和长批次分别保留，不混合口径。
+
+## 指令和冲突采集
+
+只对未padding/padding的128/8做主要结构对照。Nsight Compute application replay，cache-control none、clock-control none，21次先行调用后采第22次；正反顺序各一次。profile每次调用后同步，与批量普通计时不同，不以profiler耗时替代上表。
+
+{profile_table}
+shared读bank冲突两轮均值减少{100*(1-after/before):.3f}%。SASS仍为4条LDS.128（A/B各两条），每条动态执行4,194,304次；没有像早期+1实验那样把宽读取拆窄。shared/global读写指令总量不变，总warp指令约355.19m→357.55m，增加约0.66%。写冲突约6.7m→8.6—8.7m。两者是同时发生的代价，但本轮不能分别量化其毫秒贡献。
+
+{inst}
+InstructionStats数组统一为warp执行次数，包括谓词关闭的指令；不是线程数、字节数或耗时占比。pred-on线程统计也一并保存。padding第二轮SM时钟只有约2.30GHz，其余约2.86GHz；未锁频，不用采集时间直接排名，也不把某个管线百分比当作唯一根因。
+
+## 结论边界
+
+1. 行内分组padding确实解决了预期的B读取映射冲突，读冲突下降约99.5%，同时保留四元素宽读取及2block/SM驻留。
+2. 本轮普通长批次中padding相对未padding约慢2.15%，三次进程中位数方向一致，但原始轮次仍有重叠、差异较小；未证实净加速，仍未追回128/8与64/4的差距。不能仅凭冲突减少预测等比例提速，也不将2.15%外推为所有环境的固定回退。
+3. 此实验同时增加shared容量、写冲突及地址辅助指令，是完整布局方案的净效果；没有隔离“纯粹移除读冲突且其他一切不变”的成本。因此不能证明读冲突毫无成本，也不能把它认定为上一轮回退的主要原因。notes/32中的原因线索应按此更新理解。
+4. 保留候选和原版，不自动叠加双缓冲或其他映射，等待用户选择下一项。
+
+## 保存与复现
+
+notes/data/2026-11-10-gemm-group-padding保存三个源码快照、共同bench/check/resource/profile/sustained入口、全部命令/日志/原始计时、资源、SASS、opcode数组及experiment.py.txt；build/group_padding_2026-11-10保留忽略的二进制和报告。按prepare/measure/profile/sustained/record阶段运行，prepare/record要求新目录。prepare复用notes/32对应build入口，实际副本均保存在本轮数据目录。
+
+本轮不更换默认学习/测量入口，不提交或push。
+'''
+    note_path=REPO/'notes/33-gemm-register8-group-padding.md'
+    assert not note_path.exists()
+    note_path.write_text(note)
+    data=REPO/'notes/data/2026-11-10-gemm-group-padding'
+    data.mkdir(exist_ok=False)
+    for path in ROOT.iterdir():
+        if path.is_file() and path.suffix in ['.json','.txt']:
+            shutil.copyfile(path,data/path.name)
+    for name in NAMES:
+        for path in (ROOT/name).glob('*.cu'):
+            shutil.copyfile(path,data/(name+'_'+path.name+'.txt'))
+    shutil.copyfile(Path(__file__),data/'experiment.py.txt')
+    readme=REPO/'README.md';text=readme.read_text()
+    anchor=next(line for line in text.splitlines() if line.startswith('|') and 'notes/32-gemm-register8.md' in line)
+    text=text.replace(anchor,anchor+'\n| [33 · B行内分组padding](notes/33-gemm-register8-group-padding.md) | 每8数后留4空位；读冲突下降约99.5%，净收益见同期计时 |',1)
+    readme.write_text(text)
+    with (REPO/'notes/32-gemm-register8.md').open('a') as f:
+        f.write('\n\n后续验证（2026-11-10，notes/33）：B行内分组padding将shared读bank冲突减少约99.5%，保留宽读取、93regs及2block/SM，2048长批次没有净加速（约慢2.15%）。因此本篇列出的读冲突是实际结构问题，但尚不能认定为8×8回退的主要原因；完整布局代价与原始数据见[后续实验](33-gemm-register8-group-padding.md)。\n')
+    with (REPO/'HANDOFF.md').open('a') as f:
+        f.write(f"\n\n2026-11-10：用户授权试B行内padding，独立gemm_self_float4_reg8_bpad.cu，每8有效float后留4空位，Bs32×192、统一c+(c/8)*4映射，其他128/8/K32/256线程/转置/float4/单缓冲保持。三版12组全输出及所有普通/长批次抽查PASS。regs仍93，shared32.5→40.5KiB，仍2block/SM，无spill。读冲突约3373万→15万，下降99.5%，4条LDS.128和读写数量保持；总指令+0.66%，写冲突约670万→870万。2048长批次reg4/reg8/reg8pad={sustained['reg4']['median_ms']:.6f}/{sustained['reg8']['median_ms']:.6f}/{sustained['reg8pad']['median_ms']:.6f}ms，padding相对8×8加速{sustained['padding_speedup_vs_reg8']:.4f}倍。按notes/33和原始数据解释完整布局净效果，不认定读冲突是上一轮唯一或主要回退原因，也不能由本轮证明冲突无成本。保留原基线，未继续双缓冲，未提交。\n")
+    print('Published',published,'and',note_path,flush=True)
+else:
+    raise ValueError(phase)

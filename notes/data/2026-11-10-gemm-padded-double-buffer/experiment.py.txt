@@ -1,0 +1,391 @@
+from pathlib import Path
+import subprocess, json, csv, io, shutil, statistics, sys, hashlib, re
+
+REPO=Path('/home/unn/ai-infra-lab')
+ROOT=REPO/'build/padded_double_buffer_2026-11-10'
+PREV=REPO/'build/group_padding_2026-11-10'
+NVCC='/usr/local/cuda/bin/nvcc'
+NCU='/usr/local/cuda/bin/ncu'
+NAMES=['reg4','single','double']
+METRICS=['gpu__time_duration.sum','smsp__inst_executed.sum',
+         'smsp__sass_inst_executed_op_shared_ld.sum','smsp__sass_inst_executed_op_shared_st.sum',
+         'smsp__sass_inst_executed_op_global_ld.sum',
+         'l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum',
+         'l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum',
+         'sm__warps_active.avg.pct_of_peak_sustained_active',
+         'smsp__issue_active.avg.pct_of_peak_sustained_active',
+         'sm__inst_executed_pipe_fma.avg.pct_of_peak_sustained_elapsed',
+         'sm__cycles_elapsed.avg.per_second']
+SHARED_DEFAULT='''
+#ifndef GEMM_DYNAMIC_SHARED_BYTES
+#define GEMM_DYNAMIC_SHARED_BYTES 0
+#endif
+'''
+CONFIG='''
+    // [Codex 测量适配] 仅启动前申请动态shared，设置本身不进入计时区间。
+    if (GEMM_DYNAMIC_SHARED_BYTES > 0)
+        CUDA_CHECK(cudaFuncSetAttribute(gemm_tiled, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                       int(GEMM_DYNAMIC_SHARED_BYTES)));
+'''
+
+def run(cmd,tag):
+    (ROOT/(tag+'.command.json')).write_text(json.dumps(cmd,indent=2))
+    p=subprocess.run(cmd,capture_output=True,text=True)
+    (ROOT/(tag+'.txt')).write_text(p.stdout+p.stderr)
+    if p.returncode:
+        print((p.stdout+p.stderr)[-8000:],flush=True)
+        raise RuntimeError((tag,p.returncode))
+    return p.stdout
+
+def save(name,value):
+    (ROOT/name).write_text(json.dumps(value,indent=2))
+
+def timing_rows(output):
+    rows=[]
+    for line in output.splitlines():
+        p=line.split()
+        if len(p)==9 and all(x.isdigit() for x in p[:3]):
+            rows.append({'shape':list(map(int,p[:3])),'rounds_ms':list(map(float,p[3:6])),
+                         'median_ms':float(p[6]),'sampled_maxerr':float(p[8])})
+    assert 'All sampled checks PASS' in output
+    return rows
+
+def summarize(runs,count):
+    result=[]
+    for index in range(count):
+        row={'shape':runs[0]['rows'][index]['shape']}
+        for name in NAMES:
+            selected=[r['rows'][index] for r in runs if r['variant']==name]
+            row[name]={'median_ms':statistics.median([v for r in selected for v in r['rounds_ms']]),
+                       'all_rounds_ms':[v for r in selected for v in r['rounds_ms']],
+                       'process_medians_ms':[r['median_ms'] for r in selected]}
+        row['double_speedup_vs_single']=row['single']['median_ms']/row['double']['median_ms']
+        row['double_speedup_vs_reg4']=row['reg4']['median_ms']/row['double']['median_ms']
+        result.append(row)
+    return result
+
+def make_candidate(base,snippet):
+    start=base.index('// ===== Codex 实现：128×128')
+    end=base.index('// [Codex 说明] 下列 run_gemm',start)
+    candidate=base[:start]+snippet+'\n'+base[end:]
+    lines=candidate.splitlines()
+    while lines and lines[0].startswith('//'):lines.pop(0)
+    candidate='// [Codex 双缓冲候选] 基于128/8行内padding：A向量寄存器预取、B异步搬运、两个shared stage。\n'+'\n'.join(lines)+'\n'
+    candidate=candidate.replace('#include <cuda_runtime.h>','#include <cuda_runtime.h>\n#include <cuda_pipeline.h>')
+    assert candidate.count('gemm_tiled<<<grid, block>>>')==1
+    return candidate.replace('    gemm_tiled<<<grid, block>>>',CONFIG+'    gemm_tiled<<<grid, block, GEMM_DYNAMIC_SHARED_BYTES>>>')
+
+phase=sys.argv[1]
+if phase=='prepare':
+    ROOT.mkdir(exist_ok=False)
+    base=(REPO/'gemm/gemm_self_float4_reg8_bpad.cu').read_text()
+    snippet=Path(__file__).with_name('hybrid_double_kernel.cu.txt').read_text()
+    (ROOT/'hybrid_double_kernel.cu.txt').write_text(snippet)
+    candidate=make_candidate(base,snippet)
+    sources={'reg4':(REPO/'gemm/gemm_self_float4.cu').read_text(),'single':base,'double':candidate}
+    resource='''#define GEMM_SELF_BENCH
+#include "gemm_self_re.cu"
+'''+SHARED_DEFAULT+'''
+int main(){
+'''+CONFIG+'''
+    cudaFuncAttributes a{};cudaDeviceProp p{};int blocks=0;
+    CUDA_CHECK(cudaGetDeviceProperties(&p,0));
+    CUDA_CHECK(cudaFuncGetAttributes(&a,gemm_tiled));
+    CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&blocks,gemm_tiled,BLOCK_THREADS,GEMM_DYNAMIC_SHARED_BYTES));
+    printf("{\\"output\\":%d,\\"thread_tile\\":%d,\\"threads\\":%d,\\"regs\\":%d,\\"static_shared\\":%zu,\\"dynamic_shared\\":%zu,\\"total_shared\\":%zu,\\"local\\":%zu,\\"blocks_per_SM\\":%d,\\"max_dynamic_shared\\":%d,\\"kernel_max_threads\\":%d,\\"SMs\\":%d}\\n",
+           OUTPUT_TILE,THREAD_TILE,BLOCK_THREADS,a.numRegs,a.sharedSizeBytes,size_t(GEMM_DYNAMIC_SHARED_BYTES),
+           a.sharedSizeBytes+size_t(GEMM_DYNAMIC_SHARED_BYTES),a.localSizeBytes,blocks,a.maxDynamicSharedSizeBytes,
+           a.maxThreadsPerBlock,p.multiProcessorCount);
+}
+'''
+    metadata={}
+    for name in NAMES:
+        folder=ROOT/name;folder.mkdir()
+        (folder/'gemm_self_re.cu').write_text(sources[name])
+        for target in ['bench','check','profile','sustained']:
+            text=(PREV/'reg8pad'/(target+'.cu')).read_text()
+            include='#include GEMM_SELF_SOURCE' if '#include GEMM_SELF_SOURCE' in text else '#include "gemm_self_re.cu"'
+            assert include in text
+            text=text.replace(include,include+'\n'+SHARED_DEFAULT,1)
+            text,count=re.subn(r'(int main\([^)]*\)\s*\{)',lambda m:m.group(1)+CONFIG,text,count=1)
+            assert count==1
+            text=text.replace('gemm_tiled<<<grid, block>>>','gemm_tiled<<<grid, block, GEMM_DYNAMIC_SHARED_BYTES>>>')
+            text=text.replace('gemm_tiled<<<grid,block>>>','gemm_tiled<<<grid,block,GEMM_DYNAMIC_SHARED_BYTES>>>')
+            if target=='check':
+                assert '{257, 260, 68}};' in text
+                text=text.replace('{257, 260, 68}};',
+                                  '{257, 260, 68}, {129, 132, 64}, {129, 132, 96}, {129, 132, 97}, {131, 133, 65}};')
+            (folder/(target+'.cu')).write_text(text)
+        (folder/'resource.cu').write_text(resource)
+        for target in ['bench','check','resource','profile','sustained']:
+            run([NVCC,'-O3','-lineinfo','-arch=sm_120','-Xptxas=-v',str(folder/(target+'.cu')),
+                 '-o',str(folder/target)],name+'_compile_'+target)
+        check=run([str(folder/'check')],name+'_check')
+        assert check.count('PASS M=')==16,check
+        data=json.loads(run([str(folder/'resource')],name+'_resource'))
+        metadata[name]={'source_sha256':hashlib.sha256(sources[name].encode()).hexdigest(),'resource':data}
+        print(name,'16 full-output checks PASS',data,flush=True)
+    save('metadata.json',metadata)
+elif phase=='rebuild_double':
+    archive=ROOT/'initial_scalar_B'
+    archive.mkdir(exist_ok=False)
+    # Preserve the initial implementation and diagnostics before changing the shared load expression.
+    for path in ROOT.iterdir():
+        if path.is_file() and path.suffix in ['.json','.txt']:
+            shutil.copyfile(path,archive/path.name)
+    folder=ROOT/'double'
+    for path in folder.glob('*.cu'):
+        shutil.copyfile(path,archive/(path.name+'.txt'))
+    base=(ROOT/'single/gemm_self_re.cu').read_text()
+    snippet=Path(__file__).with_name('hybrid_double_kernel.cu.txt').read_text()
+    (ROOT/'hybrid_double_kernel.cu.txt').write_text(snippet)
+    source=make_candidate(base,snippet)
+    (folder/'gemm_self_re.cu').write_text(source)
+    for target in ['bench','check','resource','profile','sustained']:
+        run([NVCC,'-O3','-lineinfo','-arch=sm_120','-Xptxas=-v',str(folder/(target+'.cu')),
+             '-o',str(folder/target)],'double_compile_'+target)
+    output=run([str(folder/'check')],'double_check')
+    assert output.count('PASS M=')==16
+    metadata=json.loads((ROOT/'metadata.json').read_text())
+    data=json.loads(run([str(folder/'resource')],'double_resource'))
+    metadata['double']={'source_sha256':hashlib.sha256(source.encode()).hexdigest(),'resource':data}
+    save('metadata.json',metadata)
+    print('Explicit-vector double: 16 full-output checks PASS',data,flush=True)
+elif phase in ['measure','sustained']:
+    long=phase=='sustained';binary='sustained' if long else 'bench'
+    runs=[];counts=dict.fromkeys(NAMES,0)
+    orders=[NAMES,list(reversed(NAMES)),['single','reg4','double']]
+    for order in orders:
+        for name in order:
+            counts[name]+=1
+            output=run([str(ROOT/name/binary)],name+'_'+phase+str(counts[name]))
+            rows=timing_rows(output);assert len(rows)==(1 if long else 5)
+            runs.append({'variant':name,'repeat':counts[name],'rows':rows})
+            print(phase,name,counts[name],[r['median_ms'] for r in rows],flush=True)
+    save(phase+'_runs.json',runs)
+    summary=summarize(runs,1 if long else 5)
+    save(phase+'_summary.json',summary)
+    print(json.dumps(summary,indent=2),flush=True)
+elif phase=='profile':
+    results=[];names=['single','double']
+    for repeat,order in enumerate([names,list(reversed(names))],1):
+        for name in order:
+            tag=name+'_profile'+str(repeat)
+            run([NCU,'--profile-from-start','off','--replay-mode','application','--cache-control','none',
+                 '--clock-control','none','--section','LaunchStats','--section','InstructionStats',
+                 '--metrics',','.join(METRICS),'--export',str(ROOT/tag),'--force-overwrite',
+                 str(ROOT/name/'profile'),'2048','2048','2048'],tag+'_capture')
+            output=run([NCU,'--import',str(ROOT/(tag+'.ncu-rep')),'--page','raw','--csv',
+                        '--print-units','base'],tag+'_raw')
+            rows=[r for r in csv.DictReader(io.StringIO(output)) if r.get('ID','').isdigit()]
+            assert len(rows)==1
+            entry={'variant':name,'repeat':repeat}
+            for key,value in rows[0].items():
+                if key in METRICS or key.startswith('launch__') or 'spilling' in key:
+                    try:entry[key]=float(value.replace(',',''))
+                    except (ValueError,AttributeError):entry[key]=value
+            for key in METRICS:assert isinstance(entry.get(key),(float,int)),(key,entry.get(key))
+            results.append(entry);save('profile_summary.json',results)
+            print(name,repeat,{k:entry[k] for k in METRICS},flush=True)
+    sys.path.insert(0,'/opt/nvidia/nsight-compute/2026.2.1/extras/python')
+    import ncu_report
+    arrays={}
+    for name in names:
+        context=ncu_report.load_report(str(ROOT/(name+'_profile1.ncu-rep')))
+        action=context.range_by_idx(0).action_by_idx(0);arrays[name]={}
+        for key in ['sass__inst_executed_per_opcode','sass__inst_executed_per_opcode_category',
+                    'sass__thread_inst_executed_true_per_opcode']:
+            metric=action.metric_by_name(key);ids=metric.correlation_ids()
+            arrays[name][key]={str(ids.value(i) if ids else i):metric.value(i) for i in range(metric.num_instances())}
+        run([NCU,'--import',str(ROOT/(name+'_profile1.ncu-rep')),'--page','source','--print-source','sass'],name+'_sass')
+    save('opcode_arrays.json',arrays)
+    print('Saved opcode arrays and SASS',flush=True)
+elif phase=='sanitize':
+    cmd=['/usr/local/cuda/bin/compute-sanitizer','--tool','racecheck','--error-exitcode','99',str(ROOT/'double/check')]
+    (ROOT/'racecheck.command.json').write_text(json.dumps(cmd,indent=2))
+    try:
+        proc=subprocess.run(cmd,capture_output=True,text=True,timeout=60)
+        output=proc.stdout+proc.stderr
+        (ROOT/'racecheck.txt').write_text(output)
+        save('racecheck_result.json',{'returncode':proc.returncode,'timed_out':False})
+        print('Racecheck returncode',proc.returncode,output[-4500:],flush=True)
+    except subprocess.TimeoutExpired as exc:
+        output=(exc.stdout or b'')+(exc.stderr or b'')
+        if isinstance(output,bytes):output=output.decode(errors='replace')
+        (ROOT/'racecheck.txt').write_text(output)
+        save('racecheck_result.json',{'returncode':None,'timed_out':True})
+        print('Racecheck did not finish within 60 seconds',output[-2000:],flush=True)
+elif phase=='inspect':
+    arrays=json.loads((ROOT/'opcode_arrays.json').read_text())
+    for name in ['single','double']:
+        a=arrays[name]['sass__inst_executed_per_opcode']
+        t=arrays[name]['sass__thread_inst_executed_true_per_opcode']
+        print(name,json.dumps({'total_warp':sum(a.values()),
+             **{key:a.get(key,0) for key in ['FFMA','LDS','LDG','LDGSTS','STS','BAR','LDGDEPBAR','DEPBAR']},
+             'pred_on_thread_FFMA':t.get('FFMA',0)}),flush=True)
+    lines=(ROOT/'double_sass.txt').read_text().splitlines()
+    selected=[(i+1,line) for i,line in enumerate(lines) if any(s in line for s in ['LDG.E.128','LDGSTS','DEPBAR','LDS.128'])]
+    print('\n'.join(f'{i}: {line}' for i,line in selected[:26]),flush=True)
+elif phase=='record':
+    metadata=json.loads((ROOT/'metadata.json').read_text())
+    timing=json.loads((ROOT/'measure_summary.json').read_text())
+    sustained=json.loads((ROOT/'sustained_summary.json').read_text())[0]
+    profiles=json.loads((ROOT/'profile_summary.json').read_text())
+    arrays=json.loads((ROOT/'opcode_arrays.json').read_text())
+    assert len(profiles)==4
+    assert (ROOT/'single/gemm_self_re.cu').read_bytes()==(REPO/'gemm/gemm_self_float4_reg8_bpad.cu').read_bytes()
+    assert (ROOT/'reg4/gemm_self_re.cu').read_bytes()==(REPO/'gemm/gemm_self_float4.cu').read_bytes()
+    assert all(p['sass__inst_executed_register_spilling_mem_local']==0 and
+               p['sass__inst_executed_register_spilling_mem_shared']==0 for p in profiles)
+    published=REPO/'gemm/gemm_self_float4_reg8_bpad_double_buffer.cu'
+    assert not published.exists()
+    shutil.copyfile(ROOT/'double/gemm_self_re.cu',published)
+    assert hashlib.sha256(published.read_bytes()).hexdigest()==metadata['double']['source_sha256']
+
+    # The public measurement entry keeps its default source and timing settings.
+    # Only add dynamic-shared opt-in/launch support for selecting this new candidate.
+    bench_path=REPO/'gemm/gemm_self_bench.cu'
+    text=bench_path.read_text()
+    assert 'GEMM_DYNAMIC_SHARED_BYTES' not in text
+    assert text.count('#include GEMM_SELF_SOURCE')==1 and text.count('int main() {')==1
+    assert text.count('gemm_tiled<<<grid, block>>>')==1
+    text=text.replace('#include GEMM_SELF_SOURCE','#include GEMM_SELF_SOURCE\n'+SHARED_DEFAULT,1)
+    text=text.replace('int main() {','int main() {\n'+CONFIG,1)
+    text=text.replace('gemm_tiled<<<grid, block>>>','gemm_tiled<<<grid, block, GEMM_DYNAMIC_SHARED_BYTES>>>')
+    bench_path.write_text(text)
+    run([NVCC,'-O3','-lineinfo','-arch=sm_120',
+         '-DGEMM_SELF_SOURCE="gemm_self_float4_reg8_bpad_double_buffer.cu"',str(bench_path),
+         '-o',str(ROOT/'published_bench_smoke')],'published_bench_smoke_compile')
+    smoke=run([str(ROOT/'published_bench_smoke')],'published_bench_smoke')
+    assert len(timing_rows(smoke))==5
+    shutil.copyfile(bench_path,ROOT/'published_gemm_self_bench.cu')
+
+    table='| M,N,K | 原64/4 ms | padding单缓冲128/8 ms | padding双缓冲128/8 ms | 双缓冲相对单缓冲加速比 |\n|---|---:|---:|---:|---:|\n'
+    for row in timing:
+        table+='| '+', '.join(map(str,row['shape']))+' | '+' | '.join(f"{row[n]['median_ms']:.6f}" for n in NAMES)+f" | {row['double_speedup_vs_single']:.3f}× |\n"
+    resources='| 资源 | padding单缓冲 | padding双缓冲 |\n|---|---:|---:|\n'
+    for label,key in [('线程/block','threads'),('寄存器/线程','regs'),('static shared B','static_shared'),
+                      ('dynamic shared B','dynamic_shared'),('kernel总shared B','total_shared'),
+                      ('local/线程 B','local'),('理论block/SM','blocks_per_SM')]:
+        resources+='| '+label+' | '+' | '.join(str(metadata[n]['resource'][key]) for n in ['single','double'])+' |\n'
+    profile_table='| 2048指标 | 单缓冲两轮 | 双缓冲两轮 |\n|---|---:|---:|\n'
+    for label,key in [('全部warp指令','smsp__inst_executed.sum'),('shared有效读指令','smsp__sass_inst_executed_op_shared_ld.sum'),
+                      ('普通shared写指令','smsp__sass_inst_executed_op_shared_st.sum'),('普通global读指令','smsp__sass_inst_executed_op_global_ld.sum'),
+                      ('shared读bank冲突','l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum'),
+                      ('shared写bank冲突','l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum'),
+                      ('active warp占用 %','sm__warps_active.avg.pct_of_peak_sustained_active'),
+                      ('active周期发射 %','smsp__issue_active.avg.pct_of_peak_sustained_active'),
+                      ('FMA elapsed吞吐 %','sm__inst_executed_pipe_fma.avg.pct_of_peak_sustained_elapsed'),
+                      ('SM时钟Hz','sm__cycles_elapsed.avg.per_second')]:
+        spans=[]
+        for name in ['single','double']:
+            v=[p[key] for p in profiles if p['variant']==name]
+            spans.append(f'{min(v):,.2f}—{max(v):,.2f}')
+        profile_table+='| '+label+' | '+' | '.join(spans)+' |\n'
+    inst='| InstructionStats warp执行次数 | 单缓冲 | 双缓冲 |\n|---|---:|---:|\n'
+    for key in ['FFMA','LDS','LDG','LDGSTS','STS','BAR','LDGDEPBAR','DEPBAR']:
+        v=[arrays[n]['sass__inst_executed_per_opcode'].get(key,0) for n in ['single','double']]
+        inst+=f'| {key} | {v[0]:,.0f} | {v[1]:,.0f} |\n'
+    saving=100*(1-sustained['double']['median_ms']/sustained['single']['median_ms'])
+    relative4=100*(sustained['double']['median_ms']/sustained['reg4']['median_ms']-1)
+    note=f'''# 34 · padding版128/8的双缓冲：A寄存器预取、B异步搬运
+
+2026-11-10。用户要求在notes/33行内padding版本上继续加双缓冲，使用空闲shared尝试重叠搬运和计算。上午开始实现，14:52用户要求继续后完成最终测量。本轮不改精度、不改输出/线程分工及K_TILE，不把旧64/4实验的双缓冲收益外推到这里。
+
+## 实现及启动
+
+独立gemm/gemm_self_float4_reg8_bpad_double_buffer.cu，基于128×128输出、每线程8×8、16×16线程、K32、A转置+4、B每8有效数后留4空位。两个shared stage均含Ats[32][132]、Bs[32][192]，单stage41,472B，两份82,944B=81KiB；含driver为82KiB/block。
+
+超过默认48KiB静态shared限额，采用extern __shared__ __align__(16)动态区域，分成两个stage，每个stage再分A/B。host用cudaFuncSetAttribute(...MaxDynamicSharedMemorySize,82944)显式申请，启动第三参数传入GEMM_DYNAMIC_SHARED_BYTES。cudaMalloc起点及所有stage、B基址/行跨度/四元素组均满足16B对齐。
+
+混合流水线保留A向量快路径：A下一轮四组float4先进入每线程寄存器，完成当前轮计算后转置散写到另一shared stage；B对齐且四元素有效时用__pipeline_memcpy_async直接搬到下一stage的padding位置。K/N非4倍数及边界仍按原规则安全标量读取/补零，不对无效源地址发起异步拷贝。B commit前__syncwarp，wait_prior(0)只等本线程的批次，之后的__syncthreads保证全block数据到齐。
+
+先装stage0并等待/同步。每轮预取下一组A、发起下一组B，再算当前stage；等待B、写入预取A后，统一block同步再交换stage。该同步同时保证旧stage已被所有线程用完，下一轮可以安全覆盖。2048同步轮次由原128次变为初始1次+轮间64次，共65次。这是包含预取、B异步路径及同步重排的完整实现，不把全部收益唯一归因为某一种重叠。
+
+候选SHA256={metadata['double']['source_sha256']}。原单缓冲及64/4源码均保留，record再次核对基线字节一致。
+
+## 动态shared引起的代码生成问题及修正
+
+初版照搬原b[j]逐项读取表达式，编译器在动态指针下生成A侧2条LDS.128、B侧8条标量LDS。2048 shared有效读16,777,216→41,943,040、读bank冲突重新升到33,554,432。不能把这种额外变化混入最终双缓冲结论。
+
+修正为：每线程8列恰好位于一个B_GROUP内，先算bc=b_shared_col(local_col)，再显式float4读取Bs[k][bc]和Bs[k][bc+4]，将8分量交给原8×8乘加。所有地址可证明16B对齐、无跨组/越界读取；增加static_assert固定当前8×8/8元素分组前提。最终SASS保留A/B各两条LDS.128，读bank冲突两轮均为0。该修改只是保留单缓冲已有宽访问，不改变逻辑分工。
+
+初版源、编译、校验、计时、SASS和profile原始文本保存在数据目录initial_scalar_B；主目录最终结果全部在修正后重新采集。初版128regs、修正版126regs，不混用资源/耗时。
+
+## 正确性与资源
+
+三版重新-O3 -lineinfo -arch=sm_120、ptxas -v编译；十六组逐输出CPU double检查全部PASS：notes/32十二组，再加(129,132,64)、(129,132,96)、(129,132,97)、(131,133,65)，覆盖一轮、奇偶多轮、跨stage复用、K尾部、输出边界和向量/标量分支。全部普通/长批次计时前64点随机输入检查PASS。修正宽读取后重新编译并重跑完整检查。
+
+{resources}
+最终126寄存器实际按128分配；双缓冲1block/SM的限制来自shared用量，寄存器理论可支持2block/SM。实际local/shared spilling请求均为0。资源查询、公共计时和profile都传实际动态shared大小，不按零字节计算occupancy。
+
+重新尝试Compute Sanitizer racecheck，返回99：Failed to initialize WDDM debugger interface、Device not supported。检测工具没有成功启动有效目标检测；其summary的2 errors来自初始化失败，不能记作2处已定位kernel竞争，也不能声称racecheck通过。完整日志及命令保存。功能检查通过不等于工具证明不存在所有竞争。
+
+## 同期五形状计时
+
+相同随机数据序列，20预热，3轮×100启动，每版3进程九轮；顺序reg4/single/double、double/single/reg4、single/reg4/double，取批量平均耗时中位数。CUDA events、重复缓冲、不清L2，不含分配、传输、检查及动态shared属性设置。
+
+{table}
+512、长方形和非整齐输入，三次进程中双缓冲均比同结构单缓冲快；128波动明显，不据此外推稳定收益。非整齐K257/N513时，A/B均不走global向量快路径，B也不发起16B异步拷贝；该行改善包含寄存器预取、同步变化等，不能单独归因B硬件异步。
+
+## 2048长批次复测
+
+同输入，20预热、3轮×1000启动，每版3进程九轮，交错顺序同上。跳过前两种形状的随机数，确保与五形状2048输入一致。
+
+| 版本 | 九轮中位数 ms | 三次进程中位数 ms |
+|---|---:|---|
+'''
+    for name in NAMES:
+        note+=f"| {name} | {sustained[name]['median_ms']:.6f} | "+' / '.join(map(str,sustained[name]['process_medians_ms']))+' |\n'
+    note+=f'''
+双缓冲相对padding单缓冲加速{sustained['double_speedup_vs_single']:.4f}倍，耗时减少{saving:.2f}%；三次进程方向一致，两版九轮范围不重叠。相对原64/4耗时增加{relative4:.2f}%，进程中位数仍略慢，部分原始轮次重叠，未证实超过64/4。短批次和长批次分开保存，不与上午不同轮次或旧cuBLAS数据拼接成严格差距。
+
+## 实际指令和执行线索
+
+Nsight Compute application replay、cache-control none、clock-control none；21次未采集调用后采第22次，正反顺序各一轮。profile每次调用后同步，不用采集耗时替代上方普通计时。
+
+{profile_table}
+{inst}
+两版pred-on线程FFMA均8,589,934,592，主体算术量不变。B路径由普通LDG+STS换为LDGSTS.E.BYPASS.128，实际LDGSTS524,288次；普通global加载减半不代表数据量减半。A仍为LDG.E.128.CONSTANT，下一轮A向量读取及B拷贝出现在当前计算前，DEPBAR等待和A发布在当前乘加后，SASS可核对该安排；没有单独测出重叠时间或将总加速全归因重叠。
+
+InstructionStats的LDS含1,572,864条@!PT LDS RZ,[RZ]，其pred-on线程计数为0；因此其总LDS18,350,080与有效shared加载计数16,777,216不同，不误判为又拆窄。最终主计算真实读取仍4条LDS.128。
+
+总warp指令约357.55m→347.23m（少约2.89%），BAR262,144→133,120；同样的shared读取次数、低冲突和更少有效驻留warp并存。双缓冲首轮profile时钟约2.18GHz、第二轮2.86GHz，单缓冲两轮约2.86GHz；未锁频，不能直接用profile elapsed排名或唯一归因利用率变化。
+
+## 公共入口与范围
+
+gemm_self_bench.cu仅增加GEMM_DYNAMIC_SHARED_BYTES默认0、启动前opt-in、启动第三参数；默认源和原计时参数均不变。用-DGEMM_SELF_SOURCE=\\"gemm_self_float4_reg8_bpad_double_buffer.cu\\"选择候选即可。已从公开入口重新编译并跑五形状采样检查，全部PASS；该smoke日志只验证入口，不纳入上方性能汇总。gemm_self_check.cu通过run_gemm使用候选自带配置；本轮十六组检查/资源/profile实际源码均另存。
+
+本轮不加Tensor Core、不改精度、不继续调K或输出分工，不切换默认kernel，不提交或push。收益是在当前padding128/8单缓冲基础上约1.08倍；还没有成为超过旧64/4的整体最佳方案。
+
+## 保存与复现
+
+notes/data/2026-11-10-gemm-padded-double-buffer保存三个真实源码、共同bench/check/resource/profile/sustained入口、编译/校验/计时命令、所有原始结果及SASS/opcode数组、racecheck限制、最终公开bench快照和experiment.py.txt；initial_scalar_B保留初版。build/padded_double_buffer_2026-11-10保留忽略的二进制/报告。
+
+脚本prepare使用同目录hybrid_double_kernel.cu.txt，并复用前一轮build内测量入口（实际副本已保存）；最终snippet已含显式B float4。measure/profile/sustained/sanitize/record为后续阶段，prepare/record要求新目录。rebuild_double仅记录本轮从初版修正的历史步骤，不是最终prepare后必须执行的步骤。
+
+参考：[CUDA pipelines](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/pipelines.html)、[动态shared opt-in](https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/compute-capabilities.html)。
+'''
+    note_path=REPO/'notes/34-gemm-padded-double-buffer.md'
+    assert not note_path.exists();note_path.write_text(note)
+    data=REPO/'notes/data/2026-11-10-gemm-padded-double-buffer'
+    data.mkdir(exist_ok=False)
+    for path in ROOT.iterdir():
+        if path.is_file() and path.suffix in ['.json','.txt','.cu']:
+            shutil.copyfile(path,data/(path.name+('.txt' if path.suffix=='.cu' else '')))
+    for name in NAMES:
+        for path in (ROOT/name).glob('*.cu'):
+            shutil.copyfile(path,data/(name+'_'+path.name+'.txt'))
+    shutil.copytree(ROOT/'initial_scalar_B',data/'initial_scalar_B')
+    shutil.copyfile(Path(__file__),data/'experiment.py.txt')
+    readme=REPO/'README.md';text=readme.read_text()
+    anchor=next(line for line in text.splitlines() if line.startswith('|') and 'notes/33-gemm-register8-group-padding.md' in line)
+    text=text.replace(anchor,anchor+'\n| [34 · padding版双缓冲](notes/34-gemm-padded-double-buffer.md) | A预取+B异步，81KiB shared；2048比同结构单缓冲约快1.08倍 |',1)
+    readme.write_text(text)
+    with (REPO/'HANDOFF.md').open('a') as f:
+        f.write(f"\n\n2026-11-10：用户授权在128/8行内padding上加双缓冲，14:52继续执行。独立gemm_self_float4_reg8_bpad_double_buffer.cu：A下一轮向量寄存器预取并延后转置写，B对齐有效时16B异步到shared；两stage81KiB动态shared显式opt-in，host/bench/profile/occupancy均传实际字节。初版动态B指针退成8条标量LDS，已留档initial_scalar_B；最终显式两组float4恢复4条LDS.128、读冲突0。126regs、无spill、1block/SM。三版16组全输出及所有计时采样PASS；racecheck重试仍WDDM debugger接口初始化失败，未通过。最终2048长批次reg4/single/double={sustained['reg4']['median_ms']:.6f}/{sustained['single']['median_ms']:.6f}/{sustained['double']['median_ms']:.6f}ms，双相对单快{sustained['double_speedup_vs_single']:.4f}倍、耗时降{saving:.2f}%，仍比reg4慢{relative4:.2f}%。公开gemm_self_bench增加动态shared支持并smoke通过，默认源/参数未变。notes/34及原始数据已保存，未继续新优化，未提交。\n")
+    with (REPO/'notes/33-gemm-register8-group-padding.md').open('a') as f:
+        f.write('\n\n后续（2026-11-10，notes/34）：在本版基础上加A寄存器预取+B异步shared双缓冲，最终2048长批次相对本版约1.079倍加速，仍略慢于旧64/4。两stage81KiB、126regs、1block/SM，详细实现、读宽修正及验证限制见[后续实验](34-gemm-padded-double-buffer.md)。\n')
+    print('Published',published,'and',note_path,'; public bench smoke PASS',flush=True)
+else:
+    raise ValueError(phase)

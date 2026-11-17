@@ -1,0 +1,136 @@
+// [Codex 双缓冲] 两个stage各保留相同的A转置布局和B行内padding布局。
+constexpr int A_SHARED_COLS = OUTPUT_TILE + 4;
+constexpr int A_STAGE_FLOATS = K_TILE * A_SHARED_COLS;
+constexpr int B_STAGE_FLOATS = K_TILE * B_SHARED_COLS;
+constexpr int STAGE_FLOATS = A_STAGE_FLOATS + B_STAGE_FLOATS;
+constexpr int A_VECTOR_GROUPS = OUTPUT_TILE * K_TILE / (4 * BLOCK_THREADS);
+#define GEMM_DYNAMIC_SHARED_BYTES (2 * STAGE_FLOATS * sizeof(float))
+static_assert(OUTPUT_TILE * K_TILE % (4 * BLOCK_THREADS) == 0,
+              "A prefetch groups must divide evenly across threads.");
+using ATilePointer = float (*)[A_SHARED_COLS];
+using BTilePointer = float (*)[B_SHARED_COLS];
+
+// A保持global float4读取。下一轮四组向量暂存在本线程寄存器，计算当前轮后再转置散写。
+// 这样避免为了异步拷贝把A退回四次标量global读取，也不额外增加一份shared转置暂存。
+__device__ __forceinline__ void prefetch_a(float4* values, const float* A,
+                                         int M, int K, int block_row, int k0, int tid) {
+    for (int n = 0; n < A_VECTOR_GROUPS; ++n) {
+        const int group = tid + n * BLOCK_THREADS;
+        const int index = group * 4;
+        const int r = index / K_TILE, k = index % K_TILE;
+        const int gr = block_row + r, gk = k0 + k;
+        float4 v = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+        if (gr < M) {
+            if (K % 4 == 0 && gk + 3 < K) {
+                v = *reinterpret_cast<const float4*>(A + size_t(gr) * K + gk);
+            } else {
+                v.x = gk + 0 < K ? A[size_t(gr) * K + gk + 0] : 0.0f;
+                v.y = gk + 1 < K ? A[size_t(gr) * K + gk + 1] : 0.0f;
+                v.z = gk + 2 < K ? A[size_t(gr) * K + gk + 2] : 0.0f;
+                v.w = gk + 3 < K ? A[size_t(gr) * K + gk + 3] : 0.0f;
+            }
+        }
+        values[n] = v;
+    }
+}
+
+__device__ __forceinline__ void publish_a(ATilePointer Ats, const float4* values, int tid) {
+    for (int n = 0; n < A_VECTOR_GROUPS; ++n) {
+        const int index = (tid + n * BLOCK_THREADS) * 4;
+        const int r = index / K_TILE, k = index % K_TILE;
+        const float4 v = values[n];
+        Ats[k + 0][r] = v.x;
+        Ats[k + 1][r] = v.y;
+        Ats[k + 2][r] = v.z;
+        Ats[k + 3][r] = v.w;
+    }
+}
+
+// B可直接把四个连续global float异步搬到padding映射后的连续shared位置。
+// 越界或行跨度不对齐时，沿用安全标量读取/补零，再做普通shared宽写。
+__device__ __forceinline__ void prefetch_b(BTilePointer Bs, const float* B,
+                                         int N, int K, int block_col, int k0, int tid) {
+    for (int group = tid; group < K_TILE * OUTPUT_TILE / 4; group += BLOCK_THREADS) {
+        const int index = group * 4;
+        const int k = index / OUTPUT_TILE, c = index % OUTPUT_TILE;
+        const int gk = k0 + k, gc = block_col + c;
+        float* dst = &Bs[k][b_shared_col(c)];
+        if (gk < K && N % 4 == 0 && gc + 3 < N) {
+            __pipeline_memcpy_async(dst, B + size_t(gk) * N + gc, sizeof(float4));
+        } else {
+            float4 v = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+            if (gk < K) {
+                v.x = gc + 0 < N ? B[size_t(gk) * N + gc + 0] : 0.0f;
+                v.y = gc + 1 < N ? B[size_t(gk) * N + gc + 1] : 0.0f;
+                v.z = gc + 2 < N ? B[size_t(gk) * N + gc + 2] : 0.0f;
+                v.w = gc + 3 < N ? B[size_t(gk) * N + gc + 3] : 0.0f;
+            }
+            *reinterpret_cast<float4*>(dst) = v;
+        }
+    }
+    __syncwarp();  // 边缘分支汇合后，每个线程提交自己的异步拷贝批次。
+    __pipeline_commit();
+}
+
+// [Codex 实现] 128输出/每线程8×8；A寄存器预取，B硬件异步拷贝，shared双缓冲。
+__global__ void gemm_tiled(const float* __restrict__ A, const float* __restrict__ B,
+                           float* __restrict__ C, int M, int N, int K) {
+    // 两个stage共82,944B=81KiB；超过48KiB，host需显式opt-in并传启动动态shared大小。
+    extern __shared__ __align__(16) float storage[];
+    const int tx = threadIdx.x, ty = threadIdx.y;
+    const int tid = ty * BLOCK_SIDE + tx;
+    const int block_row = blockIdx.y * OUTPUT_TILE;
+    const int block_col = blockIdx.x * OUTPUT_TILE;
+    const int local_row = ty * THREAD_TILE, local_col = tx * THREAD_TILE;
+    const int row = block_row + local_row, col = block_col + local_col;
+    float acc[THREAD_TILE][THREAD_TILE] = {};
+    float4 next_a[A_VECTOR_GROUPS];  // 每线程四组float4，跨当前计算保留下一轮A。
+
+    // 预装stage0；第一次计算之前，两份输入都必须就绪。
+    prefetch_a(next_a, A, M, K, block_row, 0, tid);
+    publish_a(reinterpret_cast<ATilePointer>(storage), next_a, tid);
+    prefetch_b(reinterpret_cast<BTilePointer>(storage + A_STAGE_FLOATS), B,
+               N, K, block_col, 0, tid);
+    __pipeline_wait_prior(0);
+    __syncthreads();
+
+    int stage = 0;
+    for (int k0 = 0; k0 < K; k0 += K_TILE) {
+        ATilePointer Ats = reinterpret_cast<ATilePointer>(storage + stage * STAGE_FLOATS);
+        BTilePointer Bs = reinterpret_cast<BTilePointer>(storage + stage * STAGE_FLOATS + A_STAGE_FLOATS);
+        const int next_stage = stage ^ 1;
+        const bool has_next = k0 + K_TILE < K;
+        if (has_next) {
+            // 当前只读stage，下一轮只写另一stage；A的预取结果到计算后才使用。
+            prefetch_a(next_a, A, M, K, block_row, k0 + K_TILE, tid);
+            prefetch_b(reinterpret_cast<BTilePointer>(storage + next_stage * STAGE_FLOATS + A_STAGE_FLOATS),
+                       B, N, K, block_col, k0 + K_TILE, tid);
+        }
+
+        // 原8×8计算及读索引保留，只把当前stage的指针代入。
+        for (int k = 0; k < K_TILE; ++k) {
+            float a[THREAD_TILE], b[THREAD_TILE];
+            for (int i = 0; i < THREAD_TILE; ++i) a[i] = Ats[k][local_row + i];
+            for (int j = 0; j < THREAD_TILE; ++j) b[j] = Bs[k][b_shared_col(local_col + j)];
+            for (int i = 0; i < THREAD_TILE; ++i) {
+                for (int j = 0; j < THREAD_TILE; ++j) acc[i][j] += a[i] * b[j];
+            }
+        }
+
+        if (has_next) {
+            __pipeline_wait_prior(0);  // 等本线程提交的下一轮B拷贝。
+            publish_a(reinterpret_cast<ATilePointer>(storage + next_stage * STAGE_FLOATS), next_a, tid);
+        }
+        // 同时保证：所有线程用完旧stage，且下一stage的A写入/B拷贝全部到齐。
+        // 下一轮才可覆盖旧stage。相比单缓冲的两处barrier，轮间在此合并同步。
+        __syncthreads();
+        stage = next_stage;
+    }
+
+    for (int i = 0; i < THREAD_TILE; ++i) {
+        for (int j = 0; j < THREAD_TILE; ++j) {
+            if (row + i < M && col + j < N) C[size_t(row + i) * N + col + j] = acc[i][j];
+        }
+    }
+}
+

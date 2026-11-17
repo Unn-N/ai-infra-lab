@@ -1,0 +1,20 @@
+==WARNING== Note: Running with uncontrolled GPU caches. Profiling results may be inconsistent.
+==WARNING== Note: Running with unmodified GPU clocks. If not controlled otherwise, profiling results may be inconsistent.
+==PROF== Connected to process 649 (/home/unn/ai-infra-lab/build/warp_layout_2026-11-17/warp/profile)
+==PROF== Profiling "gemm_tiled" - 0: Application replay pass 1
+Profile 2048,2048,2048 config=128/32/8 C[0]=-23.8147
+==PROF== Disconnected from process 649
+==PROF== Connected to process 662 (/home/unn/ai-infra-lab/build/warp_layout_2026-11-17/warp/profile)
+==PROF== Profiling "gemm_tiled" - 0: Application replay pass 2
+Profile 2048,2048,2048 config=128/32/8 C[0]=-23.8147
+==PROF== Disconnected from process 662
+==PROF== Connected to process 678 (/home/unn/ai-infra-lab/build/warp_layout_2026-11-17/warp/profile)
+==PROF== Profiling "gemm_tiled" - 0: Application replay pass 3
+Profile 2048,2048,2048 config=128/32/8 C[0]=-23.8147
+==PROF== Disconnected from process 678
+==PROF== Connected to process 691 (/home/unn/ai-infra-lab/build/warp_layout_2026-11-17/warp/profile)
+==PROF== Profiling "gemm_tiled" - 0: Application replay pass 4
+Profile 2048,2048,2048 config=128/32/8 C[0]=-23.8147
+==PROF== Disconnected from process 691
+==PROF== Creating report from application replay data: 0%......100%
+==PROF== Report: /home/unn/ai-infra-lab/build/warp_layout_2026-11-17/warp_profile1.ncu-rep

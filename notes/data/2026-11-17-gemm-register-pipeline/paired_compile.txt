@@ -1,0 +1,16 @@
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_ZN5inner10gemm_tiledEPKfS1_Pfiii' for 'sm_120'
+ptxas info    : Function properties for _ZN5inner10gemm_tiledEPKfS1_Pfiii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 128 registers, used 1 barriers
+ptxas info    : Compile time = 67.618 ms
+ptxas info    : Compiling entry function '_ZN5outer10gemm_tiledEPKfS1_Pfiii' for 'sm_120'
+ptxas info    : Function properties for _ZN5outer10gemm_tiledEPKfS1_Pfiii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 126 registers, used 1 barriers
+ptxas info    : Compile time = 30.958 ms
+ptxas info    : Compiling entry function '_ZN4reg410gemm_tiledEPKfS1_Pfiii' for 'sm_120'
+ptxas info    : Function properties for _ZN4reg410gemm_tiledEPKfS1_Pfiii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 39 registers, used 1 barriers, 16896 bytes smem
+ptxas info    : Compile time = 18.182 ms

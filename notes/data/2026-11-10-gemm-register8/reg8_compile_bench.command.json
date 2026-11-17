@@ -1,0 +1,10 @@
+[
+  "/usr/local/cuda/bin/nvcc",
+  "-O3",
+  "-lineinfo",
+  "-arch=sm_120",
+  "-Xptxas=-v",
+  "/home/unn/ai-infra-lab/build/register8_2026-11-10/reg8/bench.cu",
+  "-o",
+  "/home/unn/ai-infra-lab/build/register8_2026-11-10/reg8/bench"
+]

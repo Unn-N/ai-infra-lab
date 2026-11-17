@@ -1,0 +1,182 @@
+[
+  {
+    "variant": "reg4",
+    "repeat": 1,
+    "rows": [
+      {
+        "shape": [
+          2048,
+          2048,
+          2048
+        ],
+        "rounds_ms": [
+          1.459835,
+          1.564606,
+          1.571329
+        ],
+        "median_ms": 1.564606,
+        "sampled_maxerr": 3.19e-05
+      }
+    ]
+  },
+  {
+    "variant": "outer",
+    "repeat": 1,
+    "rows": [
+      {
+        "shape": [
+          2048,
+          2048,
+          2048
+        ],
+        "rounds_ms": [
+          1.587225,
+          1.495311,
+          1.630866
+        ],
+        "median_ms": 1.587225,
+        "sampled_maxerr": 3.19e-05
+      }
+    ]
+  },
+  {
+    "variant": "inner",
+    "repeat": 1,
+    "rows": [
+      {
+        "shape": [
+          2048,
+          2048,
+          2048
+        ],
+        "rounds_ms": [
+          1.448292,
+          1.172588,
+          1.376296
+        ],
+        "median_ms": 1.376296,
+        "sampled_maxerr": 3.19e-05
+      }
+    ]
+  },
+  {
+    "variant": "inner",
+    "repeat": 2,
+    "rows": [
+      {
+        "shape": [
+          2048,
+          2048,
+          2048
+        ],
+        "rounds_ms": [
+          1.376347,
+          1.384528,
+          1.239945
+        ],
+        "median_ms": 1.376347,
+        "sampled_maxerr": 3.19e-05
+      }
+    ]
+  },
+  {
+    "variant": "outer",
+    "repeat": 2,
+    "rows": [
+      {
+        "shape": [
+          2048,
+          2048,
+          2048
+        ],
+        "rounds_ms": [
+          1.425185,
+          1.342765,
+          1.377723
+        ],
+        "median_ms": 1.377723,
+        "sampled_maxerr": 3.19e-05
+      }
+    ]
+  },
+  {
+    "variant": "reg4",
+    "repeat": 2,
+    "rows": [
+      {
+        "shape": [
+          2048,
+          2048,
+          2048
+        ],
+        "rounds_ms": [
+          1.311179,
+          1.320658,
+          1.369313
+        ],
+        "median_ms": 1.320658,
+        "sampled_maxerr": 3.19e-05
+      }
+    ]
+  },
+  {
+    "variant": "outer",
+    "repeat": 3,
+    "rows": [
+      {
+        "shape": [
+          2048,
+          2048,
+          2048
+        ],
+        "rounds_ms": [
+          1.371194,
+          1.417532,
+          1.315869
+        ],
+        "median_ms": 1.371194,
+        "sampled_maxerr": 3.19e-05
+      }
+    ]
+  },
+  {
+    "variant": "reg4",
+    "repeat": 3,
+    "rows": [
+      {
+        "shape": [
+          2048,
+          2048,
+          2048
+        ],
+        "rounds_ms": [
+          1.375299,
+          1.410251,
+          1.352633
+        ],
+        "median_ms": 1.375299,
+        "sampled_maxerr": 3.19e-05
+      }
+    ]
+  },
+  {
+    "variant": "inner",
+    "repeat": 3,
+    "rows": [
+      {
+        "shape": [
+          2048,
+          2048,
+          2048
+        ],
+        "rounds_ms": [
+          1.215068,
+          1.252,
+          1.269836
+        ],
+        "median_ms": 1.252,
+        "sampled_maxerr": 3.19e-05
+      }
+    ]
+  }
+]

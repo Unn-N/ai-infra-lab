@@ -1,0 +1,2 @@
+name, driver_version, clocks.current.sm [MHz], temperature.gpu, power.draw [W]
+NVIDIA GeForce RTX 5070, 621.01, 1567 MHz, 56.70, 33.49 W

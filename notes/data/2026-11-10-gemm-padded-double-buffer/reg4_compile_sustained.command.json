@@ -1,0 +1,10 @@
+[
+  "/usr/local/cuda/bin/nvcc",
+  "-O3",
+  "-lineinfo",
+  "-arch=sm_120",
+  "-Xptxas=-v",
+  "/home/unn/ai-infra-lab/build/padded_double_buffer_2026-11-10/reg4/sustained.cu",
+  "-o",
+  "/home/unn/ai-infra-lab/build/padded_double_buffer_2026-11-10/reg4/sustained"
+]

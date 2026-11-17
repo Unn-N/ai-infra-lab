@@ -1,0 +1,8 @@
+{
+  "date": "2026-11-10",
+  "source": "gemm/gemm_self_float4.cu",
+  "source_sha256": "4ee9339437cf7c087a23a7935e0f199aa0deb7092a22b750be72ac6a4a280801",
+  "precision": "FP32 A/B/C; cuBLAS 32F_PEDANTIC, PEDANTIC_MATH; alpha=1 beta=0",
+  "timing": "20 warmups after one checked call, 3x100 per process, 3 interleaved processes per backend",
+  "profile": "21 unprofiled calls; app replay; cache-control none; clock-control none"
+}

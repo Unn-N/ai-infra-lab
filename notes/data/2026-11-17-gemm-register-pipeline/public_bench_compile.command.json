@@ -1,0 +1,10 @@
+[
+  "/usr/local/cuda/bin/nvcc",
+  "-O3",
+  "-lineinfo",
+  "-arch=sm_120",
+  "-DGEMM_SELF_SOURCE=\"gemm_self_float4_reg8_bpad_register_pipeline.cu\"",
+  "/home/unn/ai-infra-lab/gemm/gemm_self_bench.cu",
+  "-o",
+  "/home/unn/ai-infra-lab/build/register_pipeline_2026-11-17/public_bench"
+]

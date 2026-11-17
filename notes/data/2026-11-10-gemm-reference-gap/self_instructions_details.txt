@@ -1,0 +1,15 @@
+[535] self_profile@127.0.0.1
+  gemm_tiled(const float *, const float *, float *, int, int, int) (32, 32, 1)x(16, 16, 1), Context 1, Stream 7, Device 0, CC 12.0
+    Warning: Data collection happened without fixed GPU frequencies. Profiling results may be inconsistent.
+    Section: Instruction Statistics
+    ---------------------------------------- ----------- ------------
+    Metric Name                              Metric Unit Metric Value
+    ---------------------------------------- ----------- ------------
+    Local Memory Spilling Requests                  byte            0
+    Shared Memory Spilling Requests                 byte            0
+    Avg. Executed Instructions Per Scheduler        inst   2273109.33
+    Executed Instructions                           inst    436436992
+    Avg. Issued Instructions Per Scheduler          inst   2273109.33
+    Issued Instructions                             inst    436436992
+    ---------------------------------------- ----------- ------------
+
